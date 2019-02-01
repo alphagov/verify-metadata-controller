@@ -82,6 +82,6 @@ func TestReconcile(t *testing.T) {
 		Should(gomega.Succeed())
 
 	// Manually delete Deployment since GC isn't enabled in the test control plane
-	g.Expect(c.Delete(context.TODO(), deploy)).To(gomega.Succeed())
+	// g.Expect(c.Delete(context.TODO(), deploy)).To(gomega.Succeed())
 
 }
