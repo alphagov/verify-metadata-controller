@@ -2,6 +2,8 @@
 # Image URL to use all building/pushing image targets
 IMG ?= metadata-controller:latest
 
+default: manager
+
 all: test manager
 
 # Run tests
@@ -9,7 +11,7 @@ test: generate fmt vet manifests
 	go test ./pkg/... ./cmd/... -coverprofile cover.out
 
 # Build manager binary
-manager: generate fmt vet
+manager: generate fmt
 	go build -o bin/manager github.com/alphagov/verify-metadata-controller/cmd/manager
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
@@ -42,7 +44,7 @@ generate:
 	go generate ./pkg/... ./cmd/...
 
 # Build the docker image
-docker-build: test
+docker-build:
 	docker build . -t ${IMG}
 	@echo "updating kustomize image patch file for manager resource"
 	sed -i'' -e 's@image: .*@image: '"${IMG}"'@' ./config/default/manager_image_patch.yaml

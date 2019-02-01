@@ -4,6 +4,12 @@
 
 Kubernetes Custom Resource and Controller for generating and signing SAML metadata
 
+## Requirements
+
+- docker
+- [kubebuilder](https://book.kubebuilder.io/getting_started/installation_and_setup.html)
+- [kustomize](https://github.com/kubernetes-sigs/kustomize/blob/master/docs/INSTALL.md)
+
 ## Development
 
 ```
@@ -14,6 +20,9 @@ make deploy                     # install controller with kubectl
 ```
 
 ```
-kubectl delete -n verify-metadata-controller-system pod/verify-metadata-controller-controller-manager-0
+kubectl delete pod/verify-metadata-controller-controller-manager-0
 ```
 
+## Test
+
+Run `./hack/test.sh`
