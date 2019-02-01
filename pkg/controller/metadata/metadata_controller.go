@@ -130,18 +130,20 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 
 	// TODO: shell out to ruby generate_metadata
 	// xmlBlob := generateMetadata(instance.Spec) // os.Exec("the ryby script")
+	xmlBlob := []byte("<xml>" + instance.Spec.EntityID + "</xml>")
 
 	// TODO: ask HSM to sign the xmlBlob
 	// signedXmlBlob := signMetadata(xmlBlob, os.Getenv("PCKS11_ADDRESS"), os.Getenv("PCKS11_PIN"), etc) // os.Exec("pkcs11-tool ??? xmlBlob")
+	signedXmlBlob := xmlBlob
 
-	// TODO: generate ConfigMap containing signedXmlBlob
+	// generate ConfigMap containing signedXmlBlob
 	metadataConfigMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 		},
 		BinaryData: map[string][]byte{
-			"metadata.xml": []byte("<xml>" + instance.Spec.EntityID + "</xml>"),
+			"metadata.xml": signedXmlBlob,
 		},
 	}
 	if err := controllerutil.SetControllerReference(instance, metadataConfigMap, r.scheme); err != nil {

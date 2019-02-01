@@ -12,8 +12,6 @@ spec:
     name: eIDAS Service
     displayName: eIDAS Service
     url: https://example-gateway.verify.govsvc.uk/
-  metadataSigningConfig:
-    label: my-signy-slot
   signingCertificates:
   - name: signing-cert-from-pkcs11
     pkcs11Label: my-hsm-cert-1

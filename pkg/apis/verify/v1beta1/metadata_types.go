@@ -28,7 +28,8 @@ type OrganizationSpec struct {
 
 type CertificateSpec struct {
 	Name string `json:"name,omitempty"`
-	X509 string `json:"x509"`
+	// X509 string `json:"x509"`
+	PKCS11Label string `json:"pkcs11Label"`
 }
 
 // MetadataSpec defines the desired state of Metadata
