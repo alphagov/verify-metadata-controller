@@ -1,0 +1,20 @@
+apiVersion: verify.gov.uk/v1beta1
+kind: Metadata
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: example-metadata
+spec:
+  id: _entities
+  data:
+    entityID: https://test-proxy-node.staging.verify.govsvc.uk
+    postURL: https://test-proxy-node.staging.verify.govsvc.uk/SSO/Post
+    redirectURL: https://test-proxy-node.staging.verify.govsvc.uk/Blah
+    orgName: example
+    orgDisplayName: example
+    orgURL: example.com
+    contactCompany: example
+    contactGivenName: jeff
+    contactSurname: jefferson
+    contactEmail: jeff@example.local
+  enabled: true

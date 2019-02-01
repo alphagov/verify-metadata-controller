@@ -1,0 +1,3 @@
+version: "1"
+domain: gov.uk
+repo: github.com/alphagov/verify-metadata-controller
