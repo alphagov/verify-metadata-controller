@@ -1,0 +1,25 @@
+apiVersion: verify.gov.uk/v1beta1
+kind: Metadata
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: metadata-sample
+spec:
+  id: _entities
+  entityID: https://example-gateway.verify.govsvc.uk/,
+  SSOURI: https://example-gateway.verify.govsvc.uk/SAML2/SSO/POST
+  organization:
+    name: eIDAS Service
+    displayName: eIDAS Service
+    url: https://example-gateway.verify.govsvc.uk/
+  metadataSigningConfig:
+    label: my-signy-slot
+  signingCertificates:
+  - name: signing-cert-from-pkcs11
+    pkcs11Label: my-hsm-cert-1
+  - name: signing-cert-from-pkcs11
+    pkcs11Label: my-hsm-cert-2
+  encryptionCertificate:
+  - name: signing-cert-from-pkcs11
+    pkcs11Label: my-hsm-cert-3
+  enabled: true
