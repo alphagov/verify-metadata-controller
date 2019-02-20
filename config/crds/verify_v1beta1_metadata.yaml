@@ -28,39 +28,10 @@ spec:
           type: object
         spec:
           properties:
-            SSOURI:
-              type: string
             enabled:
               type: boolean
-            encryptionCertificate:
-              items:
-                properties:
-                  name:
-                    type: string
-                type: object
-              type: array
-            entityID:
-              type: string
             id:
               type: string
-            organization:
-              properties:
-                displayName:
-                  type: string
-                name:
-                  type: string
-                url:
-                  type: string
-              type: object
-            signingCertificates:
-              items:
-                properties:
-                  name:
-                    type: string
-                type: object
-              type: array
-          required:
-          - entityID
           type: object
         status:
           type: object

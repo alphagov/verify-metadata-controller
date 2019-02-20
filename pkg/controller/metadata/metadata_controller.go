@@ -18,9 +18,13 @@ package metadata
 
 import (
 	"context"
+	"io/ioutil"
+	"os"
+	"os/exec"
 	"reflect"
 
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
+	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -37,6 +41,20 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
+
+// SigningSpec provides the details for the metadata generator and signer
+type SigningSpec struct {
+	EntityID         string `yaml:"entity_id"`
+	PostURL          string `yaml:"post_url"`
+	RedirectURL      string `yaml:"redirect_url"`
+	OrgName          string `yaml:"org_name"`
+	OrgDisplayName   string `yaml:"org_display_name"`
+	OrgURL           string `yaml:"org_url"`
+	ContactCompany   string `yaml:"contact_company"`
+	ContactGivenName string `yaml:"contact_given_name"`
+	ContactSurname   string `yaml:"contact_surname"`
+	ContactEmail     string `yaml:"contact_email"`
+}
 
 var log = logf.Log.WithName("controller")
 
@@ -128,28 +146,25 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 
-	// TODO: shell out to ruby generate_metadata
-	// xmlBlob := generateMetadata(instance.Spec) // os.Exec("the ryby script")
-	xmlBlob := []byte("<xml>" + instance.Spec.EntityID + "</xml>")
+	signedMetadata, err := generateAndSignMetadata(instance.Spec)
+	if err != nil {
+		return reconcile.Result{}, nil
+	}
 
-	// TODO: ask HSM to sign the xmlBlob
-	// signedXmlBlob := signMetadata(xmlBlob, os.Getenv("PCKS11_ADDRESS"), os.Getenv("PCKS11_PIN"), etc) // os.Exec("pkcs11-tool ??? xmlBlob")
-	signedXmlBlob := xmlBlob
-
-	// generate ConfigMap containing signedXmlBlob
+	// generate ConfigMap containing signedMetadata
 	metadataConfigMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 		},
 		BinaryData: map[string][]byte{
-			"metadata.xml": signedXmlBlob,
+			"metadata.xml": signedMetadata,
 		},
 	}
 	if err := controllerutil.SetControllerReference(instance, metadataConfigMap, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
-	// Find or craete metadataConfigMap
+	// Find or create metadataConfigMap
 	foundConfigMap := &corev1.ConfigMap{}
 	err = r.Get(context.TODO(), types.NamespacedName{Name: metadataConfigMap.Name, Namespace: metadataConfigMap.Namespace}, foundConfigMap)
 	if err != nil && errors.IsNotFound(err) {
@@ -223,7 +238,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	if err := controllerutil.SetControllerReference(instance, metadataDeployment, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
-	// Find or craete metadataDeployment
+	// Find or create metadataDeployment
 	foundDeployment := &appsv1.Deployment{}
 	err = r.Get(context.TODO(), types.NamespacedName{Name: metadataDeployment.Name, Namespace: metadataDeployment.Namespace}, foundDeployment)
 	if err != nil && errors.IsNotFound(err) {
@@ -266,7 +281,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 
-	// Find or craete metadataService
+	// Find or create metadataService
 	foundService := &corev1.Service{}
 	err = r.Get(context.TODO(), types.NamespacedName{Name: metadataService.Name, Namespace: metadataService.Namespace}, foundService)
 	if err != nil && errors.IsNotFound(err) {
@@ -287,5 +302,82 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			return reconcile.Result{}, err
 		}
 	}
+
 	return reconcile.Result{}, nil
+}
+
+func generateAndSignMetadata(spec verifyv1beta1.MetadataSpec) (signedMetadata []byte, err error) {
+	signingSpec := fromMetadataSpec(spec)
+	specFileName, err := createGeneratorFile(signingSpec)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(specFileName)
+
+	metadataFile, err := ioutil.TempFile("", "metadata")
+	if err != nil {
+		return nil, err
+	}
+
+	err = metadataFile.Close()
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(metadataFile.Name())
+
+	log.Info("Generating metadata", "specFileName", specFileName,
+		"metadataFileName", metadataFile.Name())
+	cmd := exec.Command("/mdgen/build/install/mdgen/bin/mdgen", "proxy",
+		specFileName, "/etc/verify-proxy-node/hsm_signing_cert.pem",
+		"--output", metadataFile.Name(),
+		"--algorithm", "rsapss",
+		"--credential", "cloudhsm",
+		"--hsm-key-label", "signrsa",
+		"--hsm-token-label", "cloudhsm")
+	err = cmd.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	return ioutil.ReadFile(metadataFile.Name())
+}
+
+func fromMetadataSpec(spec verifyv1beta1.MetadataSpec) SigningSpec {
+	return SigningSpec{
+		EntityID:         spec.EntityID,
+		PostURL:          spec.PostURL,
+		RedirectURL:      spec.RedirectURL,
+		OrgName:          spec.OrgName,
+		OrgDisplayName:   spec.OrgDisplayName,
+		OrgURL:           spec.OrgURL,
+		ContactCompany:   spec.ContactCompany,
+		ContactGivenName: spec.ContactGivenName,
+		ContactSurname:   spec.ContactSurname,
+		ContactEmail:     spec.ContactEmail,
+	}
+}
+
+func createGeneratorFile(spec SigningSpec) (fileName string, err error) {
+	specContents, err := yaml.Marshal(&spec)
+	if err != nil {
+		return "", err
+	}
+
+	specFile, err := ioutil.TempFile("", "sign_spec")
+	if err != nil {
+		return "", err
+	}
+
+	_, err = specFile.Write(specContents)
+	if err != nil {
+		specFile.Close()
+		return "", err
+	}
+
+	err = specFile.Close()
+	if err != nil {
+		return "", err
+	}
+
+	return specFile.Name(), nil
 }

@@ -20,27 +20,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type OrganizationSpec struct {
-	Name        string `json:"name,omitempty"`
-	DisplayName string `json:"displayName,omitempty"`
-	URL         string `json:"url,omitempty"`
-}
-
-type CertificateSpec struct {
-	Name string `json:"name,omitempty"`
-	// X509 string `json:"x509"`
-	PKCS11Label string `json:"pkcs11Label"`
-}
-
 // MetadataSpec defines the desired state of Metadata
 type MetadataSpec struct {
-	ID                     string            `json:"id,omitempty"`
-	EntityID               string            `json:"entityID"`
-	SSOURI                 string            `json:"SSOURI,omitempty"`
-	Organization           OrganizationSpec  `json:"organization,omitempty"`
-	SigningCertificates    []CertificateSpec `json:"signingCertificates,omitempty"`
-	EncryptionCertificates []CertificateSpec `json:"encryptionCertificate,omitempty"`
-	Enabled                bool              `json:"enabled,omitempty"`
+	ID                   string `json:"id,omitempty"`
+	EntityID             string `json:"entity_id"`
+	PostURL              string `json:"post_url"`
+	RedirectURL          string `json:"redirect_url"`
+	OrgName              string `json:"org_name"`
+	OrgDisplayName       string `json:"org_display_name"`
+	OrgURL               string `json:"org_url"`
+	ContactCompany       string `json:"contact_company"`
+	ContactGivenName     string `json:"contact_given_name"`
+	ContactSurname       string `json:"contact_surname"`
+	ContactEmail         string `json:"contact_email"`
+	Enabled              bool   `json:"enabled,omitempty"`
 }
 
 // MetadataStatus defines the observed state of Metadata
