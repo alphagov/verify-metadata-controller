@@ -11,7 +11,7 @@ COPY vendor/ vendor/
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager github.com/alphagov/verify-metadata-controller/cmd/manager
 
 # Copy the controller-manager into a thin image
-FROM ubuntu:latest
+FROM registry.tools.verify.govsvc.uk/eidas/mdgen:latest
 WORKDIR /
 COPY --from=builder /go/src/github.com/alphagov/verify-metadata-controller/manager .
 ENTRYPOINT ["/manager"]
