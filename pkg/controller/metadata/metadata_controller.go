@@ -134,7 +134,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 
 	signedMetadata, err := generateAndSignMetadata(instance.Spec)
 	if err != nil {
-		log.Error(err)
+		log.Error(err, "generating-metadata")
 		return reconcile.Result{}, err
 	}
 
@@ -322,7 +322,7 @@ func generateAndSignMetadata(spec verifyv1beta1.MetadataSpec) (signedMetadata []
 	if err != nil {
 		return nil, err
 	}
-	log.Info("Generated metadata", string(metadataBytes))
+	log.Info("Generated metadata", "metadata", string(metadataBytes))
 	return metadataBytes, nil
 }
 
