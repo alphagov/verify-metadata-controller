@@ -295,21 +295,14 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 
 func generateAndSignMetadata(spec verifyv1beta1.MetadataSpec) (signedMetadata []byte, err error) {
 	specFileName, err := createGeneratorFile(spec.Data)
+	defer os.Remove(specFileName)
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(specFileName)
 
 	metadataFile, err := ioutil.TempFile("", "metadata")
-	if err != nil {
-		return nil, err
-	}
+	defer metadataFile.Close()
 	defer os.Remove(metadataFile.Name())
-
-	err = metadataFile.Close()
-	if err != nil {
-		return nil, err
-	}
 
 	log.Info("Generating metadata", "specFileName", specFileName,
 		"metadataFileName", metadataFile.Name())
@@ -325,7 +318,12 @@ func generateAndSignMetadata(spec verifyv1beta1.MetadataSpec) (signedMetadata []
 		return nil, err
 	}
 
-	return ioutil.ReadFile(metadataFile.Name())
+	metadataBytes, err := ioutil.ReadFile(metadataFile.Name())
+	if err != nil {
+		return nil, err
+	}
+	log.Info("Generated metadata", string(metadataBytes))
+	return metadataBytes, nil
 }
 
 func createGeneratorFile(spec verifyv1beta1.MetadataSigningSpec) (fileName string, err error) {
