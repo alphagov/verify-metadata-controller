@@ -134,7 +134,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 
 	signedMetadata, err := generateAndSignMetadata(instance.Spec)
 	if err != nil {
-		log.Error(err, "generating-metadata")
+		log.Error(err)
 		return reconcile.Result{}, err
 	}
 
