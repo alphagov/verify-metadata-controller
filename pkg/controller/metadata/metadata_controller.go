@@ -42,20 +42,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-// SigningSpec provides the details for the metadata generator and signer
-type SigningSpec struct {
-	EntityID         string `yaml:"entity_id"`
-	PostURL          string `yaml:"post_url"`
-	RedirectURL      string `yaml:"redirect_url"`
-	OrgName          string `yaml:"org_name"`
-	OrgDisplayName   string `yaml:"org_display_name"`
-	OrgURL           string `yaml:"org_url"`
-	ContactCompany   string `yaml:"contact_company"`
-	ContactGivenName string `yaml:"contact_given_name"`
-	ContactSurname   string `yaml:"contact_surname"`
-	ContactEmail     string `yaml:"contact_email"`
-}
-
 var log = logf.Log.WithName("controller")
 
 // Add creates a new Metadata Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
@@ -307,8 +293,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 }
 
 func generateAndSignMetadata(spec verifyv1beta1.MetadataSpec) (signedMetadata []byte, err error) {
-	signingSpec := fromMetadataSpec(spec)
-	specFileName, err := createGeneratorFile(signingSpec)
+	specFileName, err := createGeneratorFile(spec.Data)
 	if err != nil {
 		return nil, err
 	}
@@ -318,12 +303,12 @@ func generateAndSignMetadata(spec verifyv1beta1.MetadataSpec) (signedMetadata []
 	if err != nil {
 		return nil, err
 	}
+	defer os.Remove(metadataFile.Name())
 
 	err = metadataFile.Close()
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(metadataFile.Name())
 
 	log.Info("Generating metadata", "specFileName", specFileName,
 		"metadataFileName", metadataFile.Name())
@@ -342,23 +327,32 @@ func generateAndSignMetadata(spec verifyv1beta1.MetadataSpec) (signedMetadata []
 	return ioutil.ReadFile(metadataFile.Name())
 }
 
-func fromMetadataSpec(spec verifyv1beta1.MetadataSpec) SigningSpec {
-	return SigningSpec{
-		EntityID:         spec.EntityID,
-		PostURL:          spec.PostURL,
-		RedirectURL:      spec.RedirectURL,
-		OrgName:          spec.OrgName,
-		OrgDisplayName:   spec.OrgDisplayName,
-		OrgURL:           spec.OrgURL,
-		ContactCompany:   spec.ContactCompany,
-		ContactGivenName: spec.ContactGivenName,
-		ContactSurname:   spec.ContactSurname,
-		ContactEmail:     spec.ContactEmail,
-	}
-}
-
-func createGeneratorFile(spec SigningSpec) (fileName string, err error) {
-	specContents, err := yaml.Marshal(&spec)
+func createGeneratorFile(spec verifyv1beta1.MetadataSigningSpec) (fileName string, err error) {
+	specContents, err := yaml.Marshal(
+		struct {
+			EntityID         string `yaml:"entity_id"`
+			PostURL          string `yaml:"post_url"`
+			RedirectURL      string `yaml:"redirect_url"`
+			OrgName          string `yaml:"org_name"`
+			OrgDisplayName   string `yaml:"org_display_name"`
+			OrgURL           string `yaml:"org_url"`
+			ContactCompany   string `yaml:"contact_company"`
+			ContactGivenName string `yaml:"contact_given_name"`
+			ContactSurname   string `yaml:"contact_surname"`
+			ContactEmail     string `yaml:"contact_email"`
+		}{
+			EntityID:         spec.EntityID,
+			PostURL:          spec.PostURL,
+			RedirectURL:      spec.RedirectURL,
+			OrgName:          spec.OrgName,
+			OrgDisplayName:   spec.OrgDisplayName,
+			OrgURL:           spec.OrgURL,
+			ContactCompany:   spec.ContactCompany,
+			ContactGivenName: spec.ContactGivenName,
+			ContactSurname:   spec.ContactSurname,
+			ContactEmail:     spec.ContactEmail,
+		},
+	)
 	if err != nil {
 		return "", err
 	}
@@ -367,14 +361,9 @@ func createGeneratorFile(spec SigningSpec) (fileName string, err error) {
 	if err != nil {
 		return "", err
 	}
+	defer specFile.Close()
 
 	_, err = specFile.Write(specContents)
-	if err != nil {
-		specFile.Close()
-		return "", err
-	}
-
-	err = specFile.Close()
 	if err != nil {
 		return "", err
 	}

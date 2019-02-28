@@ -20,20 +20,25 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// SigningSpec provides the details for the metadata generator and signer
+type MetadataSigningSpec struct {
+	EntityID         string `json:"entityID,omitempty"`
+	PostURL          string `json:"postURL,omitempty"`
+	RedirectURL      string `json:"redirectURL,omitempty"`
+	OrgName          string `json:"orgName,omitempty"`
+	OrgDisplayName   string `json:"orgDisplayName,omitempty"`
+	OrgURL           string `json:"orgURL,omitempty"`
+	ContactCompany   string `json:"contactCompany,omitempty"`
+	ContactGivenName string `json:"contactGivenName,omitempty"`
+	ContactSurname   string `json:"contactSurname,omitempty"`
+	ContactEmail     string `json:"contactEmail,omitempty"`
+}
+
 // MetadataSpec defines the desired state of Metadata
 type MetadataSpec struct {
-	ID                   string `json:"id,omitempty"`
-	EntityID             string `json:"entity_id"`
-	PostURL              string `json:"post_url"`
-	RedirectURL          string `json:"redirect_url"`
-	OrgName              string `json:"org_name"`
-	OrgDisplayName       string `json:"org_display_name"`
-	OrgURL               string `json:"org_url"`
-	ContactCompany       string `json:"contact_company"`
-	ContactGivenName     string `json:"contact_given_name"`
-	ContactSurname       string `json:"contact_surname"`
-	ContactEmail         string `json:"contact_email"`
-	Enabled              bool   `json:"enabled,omitempty"`
+	ID      string              `json:"id,omitempty"`
+	Data    MetadataSigningSpec `json:"data"`
+	Enabled bool                `json:"enabled,omitempty"`
 }
 
 // MetadataStatus defines the observed state of Metadata
