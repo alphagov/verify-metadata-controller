@@ -21,6 +21,7 @@ import (
 )
 
 // SigningSpec provides the details for the metadata generator and signer
+// +k8s:openapi-gen=true
 type MetadataSigningSpec struct {
 	EntityID         string `json:"entityID,omitempty"`
 	PostURL          string `json:"postURL,omitempty"`
@@ -35,9 +36,10 @@ type MetadataSigningSpec struct {
 }
 
 // MetadataSpec defines the desired state of Metadata
+// +k8s:openapi-gen=true
 type MetadataSpec struct {
 	ID      string              `json:"id,omitempty"`
-	Data    MetadataSigningSpec `json:"data"`
+	Data    MetadataSigningSpec `json:"data,omitempty"`
 	Enabled bool                `json:"enabled,omitempty"`
 }
 
