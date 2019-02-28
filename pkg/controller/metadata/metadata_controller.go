@@ -134,7 +134,8 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 
 	signedMetadata, err := generateAndSignMetadata(instance.Spec)
 	if err != nil {
-		return reconcile.Result{}, nil
+		log.Error(err)
+		return reconcile.Result{}, err
 	}
 
 	// generate ConfigMap containing signedMetadata
