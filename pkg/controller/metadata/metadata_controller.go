@@ -18,6 +18,7 @@ package metadata
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -311,17 +312,20 @@ func generateAndSignMetadata(spec verifyv1beta1.MetadataSpec) (signedMetadata []
 		"--output", metadataFile.Name(),
 		"--algorithm", "rsapss",
 		"--credential", "cloudhsm",
-		"--hsm-key-label", "signrsa",
-		"--hsm-token-label", "cloudhsm")
-	err = cmd.Run()
+		"--hsm-key-label", "proxynode")
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute mdgen: %s", out)
 	}
 
 	metadataBytes, err := ioutil.ReadFile(metadataFile.Name())
 	if err != nil {
 		return nil, err
 	}
+	if len(metadataBytes) == 0 {
+		return nil, fmt.Errorf("no metadata generated from mdgen: %s", out)
+	}
+
 	log.Info("Generated metadata", "metadata", string(metadataBytes))
 	return metadataBytes, nil
 }
