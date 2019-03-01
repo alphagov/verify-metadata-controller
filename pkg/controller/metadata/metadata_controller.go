@@ -310,7 +310,7 @@ func generateAndSignMetadata(spec verifyv1beta1.MetadataSpec) (signedMetadata []
 	cmd := exec.Command("/mdgen/build/install/mdgen/bin/mdgen", "proxy",
 		specFileName, "/etc/verify-proxy-node/hsm_signing_cert.pem",
 		"--output", metadataFile.Name(),
-		"--algorithm", "rsapss",
+		"--algorithm", "rsa",
 		"--credential", "cloudhsm",
 		"--hsm-key-label", "proxynode")
 	out, err := cmd.CombinedOutput()
