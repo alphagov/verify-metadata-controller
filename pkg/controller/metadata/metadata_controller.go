@@ -263,6 +263,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 					TargetPort: intstr.FromInt(80),
 				},
 			},
+			ClusterIP: corev1.ClusterIPNone,
 		},
 	}
 	if err := controllerutil.SetControllerReference(instance, metadataService, r.scheme); err != nil {
