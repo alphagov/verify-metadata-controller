@@ -43,4 +43,10 @@ RUN ./gradlew -Pcloudhsm --no-daemon installDist -x test
 WORKDIR /
 # Copy the controller-manager into the image
 COPY --from=builder /go/src/github.com/alphagov/verify-metadata-controller/manager .
+
+# install openssl dynamic engine tools
+RUN yum install -y openssl \
+	&& wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-dyn-latest.el7.x86_64.rpm \
+	&& yum install -y ./cloudhsm-client-dyn-latest.el7.x86_64.rpm
+
 ENTRYPOINT ["/manager"]
