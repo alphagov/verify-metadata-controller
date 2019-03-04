@@ -135,6 +135,9 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 
+	// right now the signing cert is hard coded, but we should generate it here really
+	// TODO generate metadataSigningKey for metadataSigningKeyLabel if missing and fetch pub key
+	// TODO generate metadataSigningCert if missing
 	metadataSigningCertPath := "/etc/verify-proxy-node/hsm_signing_cert.pem"
 	metadataSigningKeyLabel := "proxynode"
 	metadataSigningCert, err := ioutil.ReadFile(metadataSigningCertPath)
@@ -151,12 +154,16 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 
-	// TODO generate metadataSigningKey for metadataSigningKeyLabel if missing and fetch pub key
-	// TODO generate metadataSigningCert if missing
+	// right now the samlSigning* certs/keys is same as metadataSigning* certs/keys
 	// TODO generate signingKey for signingKeyLabel if missing and fetch pub key
 	// TODO generate signingCert with signingKey if missing or expired
-	// TODO generate encryptionKey for encryptionKeyLabel if missing and fetch pub key
-	// TODO generate encryptionCert with encryptionKey if missing and fetch pub key
+	samlSigningCert := metadataSigningCert
+	samlSigningKeyLabel := metadataSigningKeyLabel
+	samlSigningTruststore := metadataSigningTruststore
+	samlSigningTruststorePassword := metadataSigningTruststorePassword
+
+	// TODO generate samlEncryptionKey for samlEncryptionKeyLabel if missing and fetch pub key
+	// TODO generate samlEncryptionCert with samlEncryptionKey if missing and fetch pub key
 
 	// generate ConfigMap containing signedMetadata
 	metadataConfigMap := &corev1.ConfigMap{
@@ -175,14 +182,16 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			"metadataSigningTruststore":         metadataSigningTruststore,
 			"metadataSigningTruststoreBase64":   []byte(base64.StdEncoding.EncodeToString(metadataSigningTruststore)),
 			"metadataSigningTruststorePassword": []byte(metadataSigningTruststorePassword),
-			// "signing.crt":                  samlSigningCert,
-			// "signing.truststore":           samlSigningTruststore,
-			// "signingTruststorePassword":    samlSigningTruststorePassword,
-			// "signgingKeyLabel":             samlSigningKeyLabel,
-			// "encryption.crt":               samlEncyptionCert,
-			// "encryption.truststore":        samlEncryptionTruststore,
-			// "encryptionTruststorePassword": samlEncryptionTruststorePassword,
-			// "encryptionKeyLabel":           samlEncryptionKeyLabel,
+			"samlSigningCert":                   samlSigningCert,
+			"samlSigningTruststore":             samlSigningTruststore,
+			"samlSigningTruststoreBase64":       []byte(base64.StdEncoding.EncodeToString(samlSigningTruststore)),
+			"samlSigningTruststorePassword":     []byte(samlSigningTruststorePassword),
+			"samlSigngingKeyLabel":              []byte(samlSigningKeyLabel),
+			// "samlEncryptionCert":               samlEncyptionCert,
+			// "samlEncryptionTruststore":        samlEncryptionTruststore,
+			// "samlEncryptionTruststoreBase64":        samlEncryptionTruststoreBase64,
+			// "samlEncryptionTruststorePassword": samlEncryptionTruststorePassword,
+			// "samlEncryptionKeyLabel":           samlEncryptionKeyLabel,
 		},
 	}
 	if err := controllerutil.SetControllerReference(instance, metadataConfigMap, r.scheme); err != nil {
