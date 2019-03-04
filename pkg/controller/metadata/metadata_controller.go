@@ -166,11 +166,12 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		},
 		BinaryData: map[string][]byte{
 			"metadata.xml":                      signedMetadata,
+			"metadataInternalURL":               []byte(fmt.Sprintf("http://%s/metadata.xml", instance.Name)),
 			"metadataSigningCert":               metadataSigningCert,
+			"metadataSigningCertBase64":         []byte(base64.StdEncoding.EncodeToString(metadataSigningCert)),
 			"metadataSigningTruststore":         metadataSigningTruststore,
 			"metadataSigningTruststoreBase64":   []byte(base64.StdEncoding.EncodeToString(metadataSigningTruststore)),
 			"metadataSigningTruststorePassword": []byte(metadataSigningTruststorePassword),
-			"metadataInternalURL":               []byte(fmt.Sprintf("http://%s/metadata.xml", instance.Name)),
 			// "signing.crt":                  samlSigningCert,
 			// "signing.truststore":           samlSigningTruststore,
 			// "signingTruststorePassword":    samlSigningTruststorePassword,
