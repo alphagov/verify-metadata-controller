@@ -18,6 +18,7 @@ package metadata
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -165,9 +166,11 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		},
 		BinaryData: map[string][]byte{
 			"metadata.xml":                      signedMetadata,
-			"metadata.crt":                      metadataSigningCert,
-			"metadata.truststore":               metadataSigningTruststore,
+			"metadataSigningCert":               metadataSigningCert,
+			"metadataSigningTruststore":         metadataSigningTruststore,
+			"metadataSigningTruststoreBase64":   []byte(base64.StdEncoding.EncodeToString(metadataSigningTruststore)),
 			"metadataSigningTruststorePassword": []byte(metadataSigningTruststorePassword),
+			"metadataInternalURL":               []byte(fmt.Sprintf("http://%s/metadata.xml", instance.Name)),
 			// "signing.crt":                  samlSigningCert,
 			// "signing.truststore":           samlSigningTruststore,
 			// "signingTruststorePassword":    samlSigningTruststorePassword,
