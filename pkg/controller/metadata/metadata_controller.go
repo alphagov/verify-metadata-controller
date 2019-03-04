@@ -166,6 +166,9 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		},
 		BinaryData: map[string][]byte{
 			"metadata.xml":                      signedMetadata,
+			"entityID":                          []byte(instance.Spec.Data.EntityID),
+			"postURL":                           []byte(instance.Spec.Data.PostURL),
+			"redirectURL":                       []byte(instance.Spec.Data.RedirectURL),
 			"metadataInternalURL":               []byte(fmt.Sprintf("http://%s/metadata.xml", instance.Name)),
 			"metadataSigningCert":               metadataSigningCert,
 			"metadataSigningCertBase64":         []byte(base64.StdEncoding.EncodeToString(metadataSigningCert)),
