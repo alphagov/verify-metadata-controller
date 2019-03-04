@@ -139,6 +139,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	// TODO generate metadataSigningKey for metadataSigningKeyLabel if missing and fetch pub key
 	// TODO generate metadataSigningCert if missing
 	metadataSigningCertPath := "/etc/verify-proxy-node/hsm_signing_cert.pem"
+	metadataSigningKeyType := "cloudhsm"
 	metadataSigningKeyLabel := "proxynode"
 	metadataSigningCert, err := ioutil.ReadFile(metadataSigningCertPath)
 	if err != nil {
@@ -161,6 +162,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	// TODO generate signingKey for signingKeyLabel if missing and fetch pub key
 	// TODO generate signingCert with signingKey if missing or expired
 	samlSigningCert := metadataSigningCert
+	samlSigningKeyType := metadataSigningKeyType
 	samlSigningKeyLabel := metadataSigningKeyLabel
 	samlSigningTruststore := metadataSigningTruststore
 	samlSigningTruststorePassword := metadataSigningTruststorePassword
@@ -179,7 +181,10 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			"entityID":                          instance.Spec.Data.EntityID,
 			"postURL":                           instance.Spec.Data.PostURL,
 			"redirectURL":                       instance.Spec.Data.RedirectURL,
+			"metadataType":                      instance.Spec.Type,
 			"metadataInternalURL":               fmt.Sprintf("http://%s/metadata.xml", instance.Name),
+			"metadataSigningKeyType":            metadataSigningKeyType,
+			"metadataSigningKeyLabel":           metadataSigningKeyLabel,
 			"metadataSigningCert":               string(metadataSigningCert),
 			"metadataSigningCertBase64":         base64.StdEncoding.EncodeToString(metadataSigningCert),
 			"metadataSigningTruststoreBase64":   base64.StdEncoding.EncodeToString(metadataSigningTruststore),
@@ -188,6 +193,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			"samlSigningCertBase64":             base64.StdEncoding.EncodeToString(samlSigningCert),
 			"samlSigningTruststoreBase64":       base64.StdEncoding.EncodeToString(samlSigningTruststore),
 			"samlSigningTruststorePassword":     samlSigningTruststorePassword,
+			"samlSigningKeyType":                samlSigningKeyType,
 			"samlSigningKeyLabel":               samlSigningKeyLabel,
 			// "samlEncryptionCert":               samlEncyptionCert,
 			// "samlEncryptionCertBase64":         samlEncyptionCertBase64,
