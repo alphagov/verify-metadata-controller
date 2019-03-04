@@ -187,7 +187,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			"samlSigningCert":                   string(samlSigningCert),
 			"samlSigningTruststoreBase64":       base64.StdEncoding.EncodeToString(samlSigningTruststore),
 			"samlSigningTruststorePassword":     samlSigningTruststorePassword,
-			"samlSigngingKeyLabel":              samlSigningKeyLabel,
+			"samlSigningKeyLabel":               samlSigningKeyLabel,
 			// "samlEncryptionCert":               samlEncyptionCert,
 			// "samlEncryptionTruststoreBase64":   samlEncryptionTruststoreBase64,
 			// "samlEncryptionTruststorePassword": samlEncryptionTruststorePassword,
