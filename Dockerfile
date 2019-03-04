@@ -27,12 +27,13 @@ RUN yum install -y wget tar gzip \
  && sed -i 's/UNIXSOCKET/TCPSOCKET/g' /opt/cloudhsm/data/application.cfg
 
 WORKDIR /mdgen
-ENV GRADLE_USER_HOME=/build/.gradle \
-    LD_LIBRARY_PATH=/opt/cloudhsm/lib \
-    HSM_PARTITION=PARTITION_1 \
-    HSM_USER=user \
-    HSM_PASSWORD=password \
-    JAVA_HOME=/usr/lib/jvm/jdk-11.0.2
+ENV GRADLE_USER_HOME=/build/.gradle
+ENV LD_LIBRARY_PATH=/opt/cloudhsm/lib
+ENV HSM_PARTITION=PARTITION_1
+ENV HSM_USER=user
+ENV HSM_PASSWORD=password
+ENV JAVA_HOME=/usr/lib/jvm/jdk-11.0.2
+ENV PATH="${PATH}:${JAVA_HOME}/bin"
 COPY mdgen/gradlew ./gradlew
 COPY mdgen/build.gradle ./build.gradle
 COPY mdgen/settings.gradle ./settings.gradle
@@ -48,5 +49,6 @@ COPY --from=builder /go/src/github.com/alphagov/verify-metadata-controller/manag
 RUN yum install -y openssl \
 	&& wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-dyn-latest.el7.x86_64.rpm \
 	&& yum install -y ./cloudhsm-client-dyn-latest.el7.x86_64.rpm
+
 
 ENTRYPOINT ["/manager"]

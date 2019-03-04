@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
@@ -133,16 +134,28 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 
-	signedMetadata, err := generateAndSignMetadata(instance.Spec)
+	metadataSigningCertPath := "/etc/verify-proxy-node/hsm_signing_cert.pem"
+	metadataSigningKeyLabel := "proxynode"
+	metadataSigningCert, err := ioutil.ReadFile(metadataSigningCertPath)
+	if err != nil {
+		log.Error(err, "reading-metadata-signing-cert")
+		return reconcile.Result{}, err
+	}
+	metadataSigningTruststorePassword := "mashmallow"
+	metadataSigningTruststore, err := createTruststore(metadataSigningCert, metadataSigningTruststorePassword)
+
+	signedMetadata, err := generateAndSignMetadata(metadataSigningCertPath, metadataSigningKeyLabel, instance.Spec)
 	if err != nil {
 		log.Error(err, "generating-metadata")
 		return reconcile.Result{}, err
 	}
 
-	// generate signingKey for signingKeyLabel if missing and fetch pub key
-	// generate signingCert with signingKey if missing or expired
-	// generate encryptionKey for encryptionKeyLabel if missing and fetch pub key
-	// generate encryptionCert with encryptionKey if missing and fetch pub key
+	// TODO generate metadataSigningKey for metadataSigningKeyLabel if missing and fetch pub key
+	// TODO generate metadataSigningCert if missing
+	// TODO generate signingKey for signingKeyLabel if missing and fetch pub key
+	// TODO generate signingCert with signingKey if missing or expired
+	// TODO generate encryptionKey for encryptionKeyLabel if missing and fetch pub key
+	// TODO generate encryptionCert with encryptionKey if missing and fetch pub key
 
 	// generate ConfigMap containing signedMetadata
 	metadataConfigMap := &corev1.ConfigMap{
@@ -151,10 +164,10 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			Namespace: instance.Namespace,
 		},
 		BinaryData: map[string][]byte{
-			"metadata.xml": signedMetadata,
-			// "metadata.crt":                 metadataSigningCert,
-			// "metadata.truststore":          metadataSigningTruststore,
-			// "trustStorePassword":           metadataSigningTruststorePassword,
+			"metadata.xml":                      signedMetadata,
+			"metadata.crt":                      metadataSigningCert,
+			"metadata.truststore":               metadataSigningTruststore,
+			"metadataSigningTruststorePassword": []byte(metadataSigningTruststorePassword),
 			// "signing.crt":                  samlSigningCert,
 			// "signing.truststore":           samlSigningTruststore,
 			// "signingTruststorePassword":    samlSigningTruststorePassword,
@@ -312,9 +325,43 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	return reconcile.Result{}, nil
 }
 
-func generateAndSignMetadata(spec verifyv1beta1.MetadataSpec) (signedMetadata []byte, err error) {
-	metadataSigningCertPath := "/etc/verify-proxy-node/hsm_signing_cert.pem"
-	metadataSigningKeyLabel := "proxynode"
+func createTruststore(cert []byte, storePass string) ([]byte, error) {
+	exe, err := exec.LookPath("keytool")
+	if err != nil {
+		return nil, err
+	}
+	tmpDir, err := ioutil.TempDir("", "createTruststore")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmpDir)
+	tmpTruststorePath := filepath.Join(tmpDir, "cert.truststore")
+	tmpCertPath := filepath.Join(tmpDir, "cert.pem")
+	if err := ioutil.WriteFile(tmpCertPath, cert, 0666); err != nil {
+		return nil, err
+	}
+	// .truststore  -trustcacerts -file hsm-proxynode-signing-cert.pem
+	cmd := exec.Command(exe,
+		"-import",
+		"-noprompt",
+		"-trustcacerts",
+		"-alias", "cert",
+		"-storepass", storePass,
+		"-keystore", tmpTruststorePath,
+		"-file", tmpCertPath,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute mdgen: %s", out)
+	}
+	b, err := ioutil.ReadFile(tmpTruststorePath)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func generateAndSignMetadata(metadataSigningCertPath string, metadataSigningKeyLabel string, spec verifyv1beta1.MetadataSpec) (signedMetadata []byte, err error) {
 	specFileName, err := createGeneratorFile(spec.Data)
 	defer os.Remove(specFileName)
 	if err != nil {
