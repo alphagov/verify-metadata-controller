@@ -139,6 +139,11 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 
+	// generate signingKey for signingKeyLabel if missing and fetch pub key
+	// generate signingCert with signingKey if missing or expired
+	// generate encryptionKey for encryptionKeyLabel if missing and fetch pub key
+	// generate encryptionCert with encryptionKey if missing and fetch pub key
+
 	// generate ConfigMap containing signedMetadata
 	metadataConfigMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -147,6 +152,17 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		},
 		BinaryData: map[string][]byte{
 			"metadata.xml": signedMetadata,
+			// "metadata.crt":                 metadataSigningCert,
+			// "metadata.truststore":          metadataSigningTruststore,
+			// "trustStorePassword":           metadataSigningTruststorePassword,
+			// "signing.crt":                  samlSigningCert,
+			// "signing.truststore":           samlSigningTruststore,
+			// "signingTruststorePassword":    samlSigningTruststorePassword,
+			// "signgingKeyLabel":             samlSigningKeyLabel,
+			// "encryption.crt":               samlEncyptionCert,
+			// "encryption.truststore":        samlEncryptionTruststore,
+			// "encryptionTruststorePassword": samlEncryptionTruststorePassword,
+			// "encryptionKeyLabel":           samlEncryptionKeyLabel,
 		},
 	}
 	if err := controllerutil.SetControllerReference(instance, metadataConfigMap, r.scheme); err != nil {
@@ -163,14 +179,15 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
-	}
-	// Update the found object and write the result back if there are any changes
-	if !reflect.DeepEqual(metadataConfigMap.BinaryData, foundConfigMap.BinaryData) {
-		foundConfigMap.BinaryData = metadataConfigMap.BinaryData
-		log.Info("Updating ConfigMap", "namespace", metadataConfigMap.Namespace, "name", metadataConfigMap.Name)
-		err = r.Update(context.TODO(), foundConfigMap)
-		if err != nil {
-			return reconcile.Result{}, err
+	} else {
+		// Update the found object and write the result back if there are any changes
+		if !reflect.DeepEqual(metadataConfigMap.BinaryData, foundConfigMap.BinaryData) {
+			foundConfigMap.BinaryData = metadataConfigMap.BinaryData
+			log.Info("Updating ConfigMap", "namespace", metadataConfigMap.Namespace, "name", metadataConfigMap.Name)
+			err = r.Update(context.TODO(), foundConfigMap)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
 		}
 	}
 
@@ -296,6 +313,8 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 }
 
 func generateAndSignMetadata(spec verifyv1beta1.MetadataSpec) (signedMetadata []byte, err error) {
+	metadataSigningCertPath := "/etc/verify-proxy-node/hsm_signing_cert.pem"
+	metadataSigningKeyLabel := "proxynode"
 	specFileName, err := createGeneratorFile(spec.Data)
 	defer os.Remove(specFileName)
 	if err != nil {
@@ -308,12 +327,12 @@ func generateAndSignMetadata(spec verifyv1beta1.MetadataSpec) (signedMetadata []
 
 	log.Info("Generating metadata", "specFileName", specFileName,
 		"metadataFileName", metadataFile.Name())
-	cmd := exec.Command("/mdgen/build/install/mdgen/bin/mdgen", "proxy",
-		specFileName, "/etc/verify-proxy-node/hsm_signing_cert.pem",
+	cmd := exec.Command("/mdgen/build/install/mdgen/bin/mdgen", spec.Type,
+		specFileName, metadataSigningCertPath,
 		"--output", metadataFile.Name(),
 		"--algorithm", "rsa",
 		"--credential", "cloudhsm",
-		"--hsm-key-label", "proxynode")
+		"--hsm-key-label", metadataSigningKeyLabel)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute mdgen: %s", out)

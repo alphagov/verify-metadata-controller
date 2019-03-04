@@ -39,6 +39,7 @@ type MetadataSigningSpec struct {
 // +k8s:openapi-gen=true
 type MetadataSpec struct {
 	ID      string              `json:"id,omitempty"`
+	Type    string              `json:"type"`
 	Data    MetadataSigningSpec `json:"data,omitempty"`
 	Enabled bool                `json:"enabled,omitempty"`
 }
