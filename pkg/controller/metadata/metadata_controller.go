@@ -146,7 +146,10 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 	metadataSigningTruststorePassword := "mashmallow"
-	metadataSigningTruststore, err := createTruststore(metadataSigningCert, metadataSigningTruststorePassword)
+	metadataSigningTruststore, err := generateTruststore(metadataSigningCert, metadataSigningKeyLabel, metadataSigningTruststorePassword)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 
 	signedMetadata, err := generateAndSignMetadata(metadataSigningCertPath, metadataSigningKeyLabel, instance.Spec)
 	if err != nil {
@@ -342,12 +345,12 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	return reconcile.Result{}, nil
 }
 
-func createTruststore(cert []byte, storePass string) ([]byte, error) {
+func generateTruststore(cert []byte, alias, storePass string) ([]byte, error) {
 	exe, err := exec.LookPath("keytool")
 	if err != nil {
 		return nil, err
 	}
-	tmpDir, err := ioutil.TempDir("", "createTruststore")
+	tmpDir, err := ioutil.TempDir("", "truststore")
 	if err != nil {
 		return nil, err
 	}
@@ -358,18 +361,21 @@ func createTruststore(cert []byte, storePass string) ([]byte, error) {
 		return nil, err
 	}
 	// .truststore  -trustcacerts -file hsm-proxynode-signing-cert.pem
+	log.Info("Generating truststore",
+		"alias", alias,
+	)
 	cmd := exec.Command(exe,
 		"-import",
 		"-noprompt",
 		"-trustcacerts",
-		"-alias", "cert",
+		"-alias", alias,
 		"-storepass", storePass,
 		"-keystore", tmpTruststorePath,
 		"-file", tmpCertPath,
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute mdgen: %s", out)
+		return nil, fmt.Errorf("failed to generate truststore for %s: %s", alias, out)
 	}
 	b, err := ioutil.ReadFile(tmpTruststorePath)
 	if err != nil {
@@ -379,6 +385,9 @@ func createTruststore(cert []byte, storePass string) ([]byte, error) {
 }
 
 func generateAndSignMetadata(metadataSigningCertPath string, metadataSigningKeyLabel string, spec verifyv1beta1.MetadataSpec) (signedMetadata []byte, err error) {
+	if spec.Type == "" {
+		return nil, fmt.Errorf("spec.Type must be set")
+	}
 	specFileName, err := createGeneratorFile(spec.Data)
 	defer os.Remove(specFileName)
 	if err != nil {
