@@ -250,7 +250,8 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "data",
-									MountPath: "/usr/share/nginx/html",
+									MountPath: "/usr/share/nginx/html/metadata.xml",
+									SubPath:   "metadata.xml",
 								},
 							},
 						},
