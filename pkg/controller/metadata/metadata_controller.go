@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,6 +25,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
 	"gopkg.in/yaml.v2"
@@ -43,6 +44,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+)
+
+const (
+	cloudHSMKeyType    = "cloudhsm"
+	metadataXMLKey     = "metadata.xml"
+	truststorePassword = "mashmallow"
 )
 
 var log = logf.Log.WithName("controller")
@@ -74,17 +81,15 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	// Watch for changes to created Deployments
 	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &verifyv1beta1.Metadata{},
+		OwnerType: &verifyv1beta1.Metadata{},
 	})
 	if err != nil {
 		return err
 	}
 
-	// Watch for changes to created ConfigMaps
-	err = c.Watch(&source.Kind{Type: &corev1.ConfigMap{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &verifyv1beta1.Metadata{},
+	// Watch for changes to created Secret
+	err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestForOwner{
+		OwnerType: &verifyv1beta1.Metadata{},
 	})
 	if err != nil {
 		return err
@@ -92,8 +97,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	// Watch for changes to created Services
 	err = c.Watch(&source.Kind{Type: &corev1.Service{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &verifyv1beta1.Metadata{},
+		OwnerType: &verifyv1beta1.Metadata{},
 	})
 	if err != nil {
 		return err
@@ -110,13 +114,121 @@ type ReconcileMetadata struct {
 	scheme *runtime.Scheme
 }
 
+type HSMCredentials struct {
+	IP         string
+	User       string
+	Password   string
+	CustomerCA string
+}
+
+func createRSAKeyPair(label string, hsmCreds HSMCredentials) (publicCert []byte, err error) {
+	log.Info("cloudhsmtool",
+		"command", "genrsa",
+		"label", label,
+	)
+	cmd := exec.Command("/cloudhsmtool/build/install/cloudhsmtool/bin/cloudhsmtool",
+		"genrsa", label,
+	)
+	cmd.Stderr = nil // when nil stderr output is captured in err from Output
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("HSM_USER=%s", hsmCreds.User),
+		fmt.Sprintf("HSM_PASSWORD=%s", hsmCreds.Password),
+		fmt.Sprintf("HSM_IP=%s", hsmCreds.IP),
+	)
+	cert, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate rsa key for %s: %s", label, err)
+	}
+	if !strings.Contains(string(cert), "--BEGIN CERTIFICATE--") {
+		return nil, fmt.Errorf("generated %s certificate does not appear to be a valid PEM format: %s", label, cert)
+	}
+	return cert, nil
+}
+
+func findOrCreateRSAKeyPair(label string, hsmCreds HSMCredentials) (signingCert []byte, err error) {
+	return createRSAKeyPair(label, hsmCreds)
+}
+
+func generateMetadataSecret(instance *verifyv1beta1.Metadata, metadataCreds HSMCredentials, namespaceCreds HSMCredentials) (*corev1.Secret, error) {
+
+	metadataSigningKeyLabel := "metadata"
+	metadataSigningCert, err := findOrCreateRSAKeyPair(metadataSigningKeyLabel, metadataCreds)
+	if err != nil {
+		return nil, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", metadataSigningKeyLabel, err)
+	}
+	metadataSigningTruststore, err := generateTruststore(metadataSigningCert, metadataSigningKeyLabel, truststorePassword)
+	if err != nil {
+		return nil, err
+	}
+
+	signedMetadata, err := generateAndSignMetadata(metadataSigningCert, metadataSigningKeyLabel, instance.Spec, metadataCreds)
+	if err != nil {
+		return nil, fmt.Errorf("generateAndSignMetadata(%s): %s", metadataSigningKeyLabel, err)
+	}
+
+	// right now the samlSigning* certs/keys is same as metadataSigning* certs/keys
+	// TODO findOrCreateRSAKeyPair for samlSigningCert using namespaceCreds instead of using metadata keypair
+	samlSigningCert := metadataSigningCert
+	samlSigningKeyLabel := metadataSigningKeyLabel
+	samlSigningTruststore := metadataSigningTruststore
+	samlSigningTruststorePassword := truststorePassword
+
+	// TODO findOrCreateRSAKeyPair for samlEncryptionCert namespaceCreds instead of using metadata keypair
+	// samlEncryptionCert := metadataSigningCert
+	// etc...
+
+	// generate Secret containing generated assets (including signed metadata xml)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      instance.Name,
+			Namespace: instance.Namespace,
+		},
+		Type:       corev1.SecretTypeOpaque,
+		StringData: map[string]string{},
+		Data: map[string][]byte{
+			metadataXMLKey:                      []byte(signedMetadata),
+			"entityID":                          []byte(instance.Spec.Data.EntityID),
+			"postURL":                           []byte(instance.Spec.Data.PostURL),
+			"redirectURL":                       []byte(instance.Spec.Data.RedirectURL),
+			"metadataType":                      []byte(instance.Spec.Type),
+			"metadataInternalURL":               []byte(fmt.Sprintf("http://%s/metadata.xml", instance.Name)),
+			"metadataSigningKeyType":            []byte(cloudHSMKeyType),
+			"metadataSigningKeyLabel":           []byte(metadataSigningKeyLabel),
+			"metadataSigningCert":               []byte(metadataSigningCert),
+			"metadataSigningCertBase64":         []byte(base64.StdEncoding.EncodeToString(metadataSigningCert)),
+			"metadataSigningTruststore":         []byte(metadataSigningTruststore),
+			"metadataSigningTruststoreBase64":   []byte(base64.StdEncoding.EncodeToString(metadataSigningTruststore)),
+			"metadataSigningTruststorePassword": []byte(truststorePassword),
+			"samlSigningCert":                   []byte(samlSigningCert),
+			"samlSigningCertBase64":             []byte(base64.StdEncoding.EncodeToString(samlSigningCert)),
+			"samlSigningTruststore":             []byte(samlSigningTruststore),
+			"samlSigningTruststoreBase64":       []byte(base64.StdEncoding.EncodeToString(samlSigningTruststore)),
+			"samlSigningTruststorePassword":     []byte(samlSigningTruststorePassword),
+			"samlSigningKeyType":                []byte(cloudHSMKeyType),
+			"samlSigningKeyLabel":               []byte(samlSigningKeyLabel),
+			"hsmUser":                           []byte(metadataCreds.User),       // <-| TODO: these should be namespaceCreds
+			"hsmPassword":                       []byte(metadataCreds.Password),   // <-|
+			"hsmIP":                             []byte(metadataCreds.IP),         // <-|
+			"hsmCustomerCA.crt":                 []byte(metadataCreds.CustomerCA), // <-|
+			// "samlEncryptionCert":               samlEncyptionCert,
+			// "samlEncryptionCertBase64":         samlEncyptionCertBase64,
+			// "samlEncryptionTruststoreBase64":   samlEncryptionTruststoreBase64,
+			// "samlEncryptionTruststorePassword": samlEncryptionTruststorePassword,
+			// "samlEncryptionKeyLabel":           samlEncryptionKeyLabel,
+			// "samlEncryptionTruststore":        samlEncryptionTruststore,
+			// .. etc
+		},
+	}
+	return secret, nil
+}
+
 // Reconcile reads that state of the cluster for a Metadata object and makes changes based on the state read
 // and what is in the Metadata.Spec
 // Automatically generate RBAC rules to allow the Controller to read and write Deployments
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=,resources=configmaps/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=,resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=,resources=secrets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=,resources=services/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=verify.gov.uk,resources=metadata,verbs=get;list;watch;create;update;patch;delete
@@ -135,102 +247,49 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 
-	// right now the signing cert is hard coded, but we should generate it here really
-	// TODO generate metadataSigningKey for metadataSigningKeyLabel if missing and fetch pub key
-	// TODO generate metadataSigningCert if missing
-	metadataSigningCertPath := "/etc/verify-proxy-node/hsm_signing_cert.pem"
-	metadataSigningKeyType := "cloudhsm"
-	metadataSigningKeyLabel := "proxynode"
-	metadataSigningCert, err := ioutil.ReadFile(metadataSigningCertPath)
-	if err != nil {
-		log.Error(err, "reading-metadata-signing-cert")
-		return reconcile.Result{}, err
-	}
-	metadataSigningTruststorePassword := "mashmallow"
-	metadataSigningTruststore, err := generateTruststore(metadataSigningCert, metadataSigningKeyLabel, metadataSigningTruststorePassword)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	signedMetadata, err := generateAndSignMetadata(metadataSigningCertPath, metadataSigningKeyLabel, instance.Spec)
-	if err != nil {
-		log.Error(err, "generating-metadata")
-		return reconcile.Result{}, err
-	}
-
-	// right now the samlSigning* certs/keys is same as metadataSigning* certs/keys
-	// TODO generate signingKey for signingKeyLabel if missing and fetch pub key
-	// TODO generate signingCert with signingKey if missing or expired
-	samlSigningCert := metadataSigningCert
-	samlSigningKeyType := metadataSigningKeyType
-	samlSigningKeyLabel := metadataSigningKeyLabel
-	samlSigningTruststore := metadataSigningTruststore
-	samlSigningTruststorePassword := metadataSigningTruststorePassword
-
-	// TODO generate samlEncryptionKey for samlEncryptionKeyLabel if missing and fetch pub key
-	// TODO generate samlEncryptionCert with samlEncryptionKey if missing and fetch pub key
-
-	// generate ConfigMap containing signedMetadata
-	metadataConfigMap := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
-		},
-		Data: map[string]string{
-			"metadata.xml":                      string(signedMetadata),
-			"entityID":                          instance.Spec.Data.EntityID,
-			"postURL":                           instance.Spec.Data.PostURL,
-			"redirectURL":                       instance.Spec.Data.RedirectURL,
-			"metadataType":                      instance.Spec.Type,
-			"metadataInternalURL":               fmt.Sprintf("http://%s/metadata.xml", instance.Name),
-			"metadataSigningKeyType":            metadataSigningKeyType,
-			"metadataSigningKeyLabel":           metadataSigningKeyLabel,
-			"metadataSigningCert":               string(metadataSigningCert),
-			"metadataSigningCertBase64":         base64.StdEncoding.EncodeToString(metadataSigningCert),
-			"metadataSigningTruststoreBase64":   base64.StdEncoding.EncodeToString(metadataSigningTruststore),
-			"metadataSigningTruststorePassword": metadataSigningTruststorePassword,
-			"samlSigningCert":                   string(samlSigningCert),
-			"samlSigningCertBase64":             base64.StdEncoding.EncodeToString(samlSigningCert),
-			"samlSigningTruststoreBase64":       base64.StdEncoding.EncodeToString(samlSigningTruststore),
-			"samlSigningTruststorePassword":     samlSigningTruststorePassword,
-			"samlSigningKeyType":                samlSigningKeyType,
-			"samlSigningKeyLabel":               samlSigningKeyLabel,
-			// "samlEncryptionCert":               samlEncyptionCert,
-			// "samlEncryptionCertBase64":         samlEncyptionCertBase64,
-			// "samlEncryptionTruststoreBase64":   samlEncryptionTruststoreBase64,
-			// "samlEncryptionTruststorePassword": samlEncryptionTruststorePassword,
-			// "samlEncryptionKeyLabel":           samlEncryptionKeyLabel,
-		},
-		BinaryData: map[string][]byte{
-			"metadataSigningTruststore": metadataSigningTruststore,
-			"samlSigningTruststore":     samlSigningTruststore,
-			// "samlEncryptionTruststore":        samlEncryptionTruststore,
-		},
-	}
-	if err := controllerutil.SetControllerReference(instance, metadataConfigMap, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
-	// Find or create metadataConfigMap
-	foundConfigMap := &corev1.ConfigMap{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: metadataConfigMap.Name, Namespace: metadataConfigMap.Namespace}, foundConfigMap)
+	// Find or create metadataSecret
+	foundSecret := &corev1.Secret{}
+	err = r.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, foundSecret)
 	if err != nil && errors.IsNotFound(err) {
-		log.Info("Creating ConfigMap", "namespace", metadataConfigMap.Namespace, "name", metadataConfigMap.Name)
-		err = r.Create(context.TODO(), metadataConfigMap)
+		log.Info("Generating Secret", "namespace", instance.Namespace, "name", instance.Name)
+		hsmCustomerCACertPath := "/opt/cloudhsm/etc/customerCA.crt"
+		hsmCustomerCA, err := ioutil.ReadFile(hsmCustomerCACertPath)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		hsmCreds := HSMCredentials{
+			IP:         os.Getenv("HSM_IP"),
+			User:       os.Getenv("HSM_USER"),
+			Password:   os.Getenv("HSM_PASSWORD"),
+			CustomerCA: string(hsmCustomerCA),
+		}
+
+		metadataSecret, err := generateMetadataSecret(instance, hsmCreds, hsmCreds) // TODO: use different hsm creds for metadata signing vs generated per-namespace keypairs
+		if err != nil {
+			log.Error(err, "generating-metadata")
+			return reconcile.Result{}, err
+		}
+		if err := controllerutil.SetControllerReference(instance, metadataSecret, r.scheme); err != nil {
+			return reconcile.Result{}, err
+		}
+		log.Info("Creating Secret", "namespace", metadataSecret.Namespace, "name", metadataSecret.Name)
+		err = r.Create(context.TODO(), metadataSecret)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else {
-		// Update the found object and write the result back if there are any changes
-		if !reflect.DeepEqual(metadataConfigMap.BinaryData, foundConfigMap.BinaryData) {
-			foundConfigMap.BinaryData = metadataConfigMap.BinaryData
-			log.Info("Updating ConfigMap", "namespace", metadataConfigMap.Namespace, "name", metadataConfigMap.Name)
-			err = r.Update(context.TODO(), foundConfigMap)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-		}
+		// TODO: we may want to handle updates to self-heal metadata, but this would need to be more inteligent than below
+		// } else {
+		// 	// Update the found object and write the result back if there are any changes
+		// 	if !reflect.DeepEqual(metadataSecret.Data, foundSecret.Data) {
+		// 		foundSecret.Data = metadataSecret.Data
+		// 		log.Info("Updating Secret", "namespace", metadataSecret.Namespace, "name", metadataSecret.Name)
+		// 		err = r.Update(context.TODO(), foundSecret)
+		// 		if err != nil {
+		// 			return reconcile.Result{}, err
+		// 		}
+		// 	}
 	}
 
 	metadataLabels := map[string]string{
@@ -264,7 +323,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 								{
 									Name:      "data",
 									MountPath: "/usr/share/nginx/html/metadata.xml",
-									SubPath:   "metadata.xml",
+									SubPath:   metadataXMLKey,
 								},
 							},
 						},
@@ -273,8 +332,8 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 						{
 							Name: "data",
 							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{Name: metadataConfigMap.Name},
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: instance.Name,
 								},
 							},
 						},
@@ -394,7 +453,7 @@ func generateTruststore(cert []byte, alias, storePass string) ([]byte, error) {
 	return b, nil
 }
 
-func generateAndSignMetadata(metadataSigningCertPath string, metadataSigningKeyLabel string, spec verifyv1beta1.MetadataSpec) (signedMetadata []byte, err error) {
+func generateAndSignMetadata(metadataSigningCert []byte, metadataSigningKeyLabel string, spec verifyv1beta1.MetadataSpec, hsmCreds HSMCredentials) (signedMetadata []byte, err error) {
 	if spec.Type == "" {
 		return nil, fmt.Errorf("spec.Type must be set")
 	}
@@ -404,33 +463,53 @@ func generateAndSignMetadata(metadataSigningCertPath string, metadataSigningKeyL
 		return nil, err
 	}
 
-	metadataFile, err := ioutil.TempFile("", "metadata")
-	defer metadataFile.Close()
-	defer os.Remove(metadataFile.Name())
+	tmpDir, err := ioutil.TempDir("", "mdgen")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmpDir)
+	tmpMetadataSigningCertPath := filepath.Join(tmpDir, "cert.pem")
+	tmpMetadataOutputPath := filepath.Join(tmpDir, "metadata.xml")
 
-	log.Info("Generating metadata", "specFileName", specFileName,
-		"metadataFileName", metadataFile.Name())
+	if err := ioutil.WriteFile(tmpMetadataSigningCertPath, metadataSigningCert, 0644); err != nil {
+		return nil, err
+	}
+
+	log.Info("mdgen",
+		"type", spec.Type,
+		"input", specFileName,
+		"output", tmpMetadataOutputPath,
+		"label", metadataSigningKeyLabel,
+	)
 	cmd := exec.Command("/mdgen/build/install/mdgen/bin/mdgen", spec.Type,
-		specFileName, metadataSigningCertPath,
-		"--output", metadataFile.Name(),
+		specFileName, tmpMetadataSigningCertPath,
+		"--output", tmpMetadataOutputPath,
 		"--algorithm", "rsa",
 		"--credential", "cloudhsm",
-		"--hsm-key-label", metadataSigningKeyLabel)
+		"--hsm-key-label", metadataSigningKeyLabel,
+	)
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("HSM_USER=%s", hsmCreds.User),
+		fmt.Sprintf("HSM_PASSWORD=%s", hsmCreds.Password),
+		fmt.Sprintf("HSM_IP=%s", hsmCreds.IP),
+	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute mdgen: %s", out)
 	}
 
-	metadataBytes, err := ioutil.ReadFile(metadataFile.Name())
+	b, err := ioutil.ReadFile(tmpMetadataOutputPath)
 	if err != nil {
 		return nil, err
 	}
-	if len(metadataBytes) == 0 {
+	if len(b) == 0 {
 		return nil, fmt.Errorf("no metadata generated from mdgen: %s", out)
 	}
 
-	log.Info("Generated metadata", "metadata", string(metadataBytes))
-	return metadataBytes, nil
+	log.Info("mdgen-done",
+		"metadata", string(b),
+	)
+	return b, nil
 }
 
 func createGeneratorFile(spec verifyv1beta1.MetadataSigningSpec) (fileName string, err error) {

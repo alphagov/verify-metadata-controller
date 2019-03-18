@@ -26,6 +26,7 @@ RUN yum install -y wget tar gzip \
  && rm ./openjdk-11.0.2*.tar.gz \
  && sed -i 's/UNIXSOCKET/TCPSOCKET/g' /opt/cloudhsm/data/application.cfg
 
+# install mdgen (signs metadata using hsm)
 WORKDIR /mdgen
 ENV GRADLE_USER_HOME=/build/.gradle
 ENV LD_LIBRARY_PATH=/opt/cloudhsm/lib
@@ -41,11 +42,21 @@ COPY mdgen/gradle ./gradle
 COPY mdgen/src ./src
 RUN ./gradlew -Pcloudhsm --no-daemon installDist -x test
 
-WORKDIR /
+# install cloudhsm tool (generates keys etc)
+WORKDIR /cloudhsmtool
+ENV GRADLE_USER_HOME=/build/.gradle
+COPY cloudhsmtool/gradlew ./gradlew
+COPY cloudhsmtool/build.gradle ./build.gradle
+COPY cloudhsmtool/settings.gradle ./settings.gradle
+COPY cloudhsmtool/gradle ./gradle
+COPY cloudhsmtool/src ./src
+RUN ./gradlew -Pcloudhsm --no-daemon installDist -x test
+
 # Copy the controller-manager into the image
+WORKDIR /
 COPY --from=builder /go/src/github.com/alphagov/verify-metadata-controller/manager .
 
-# install openssl dynamic engine tools
+# # install openssl dynamic engine tools
 RUN yum install -y openssl \
 	&& wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-dyn-latest.el7.x86_64.rpm \
 	&& yum install -y ./cloudhsm-client-dyn-latest.el7.x86_64.rpm
