@@ -24,7 +24,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
 
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
@@ -275,21 +274,12 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		log.Info("Creating Secret", "namespace", metadataSecret.Namespace, "name", metadataSecret.Name)
 		err = r.Create(context.TODO(), metadataSecret)
 		if err != nil {
-			return reconcile.Result{}, err
+			return reconcile.Result{}, fmt.Errorf("failed to create Secret %s: %s", metadataSecret.Name, err)
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
+	} else {
 		// TODO: we may want to handle updates to self-heal metadata, but this would need to be more inteligent than below
-		// } else {
-		// 	// Update the found object and write the result back if there are any changes
-		// 	if !reflect.DeepEqual(metadataSecret.Data, foundSecret.Data) {
-		// 		foundSecret.Data = metadataSecret.Data
-		// 		log.Info("Updating Secret", "namespace", metadataSecret.Namespace, "name", metadataSecret.Name)
-		// 		err = r.Update(context.TODO(), foundSecret)
-		// 		if err != nil {
-		// 			return reconcile.Result{}, err
-		// 		}
-		// 	}
 	}
 
 	metadataLabels := map[string]string{
@@ -352,20 +342,12 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		log.Info("Creating Deployment", "namespace", metadataDeployment.Namespace, "name", metadataDeployment.Name)
 		err = r.Create(context.TODO(), metadataDeployment)
 		if err != nil {
-			return reconcile.Result{}, err
+			return reconcile.Result{}, fmt.Errorf("failed to create Deployment %s: %s", metadataDeployment.Name, err)
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
-	}
-
-	// Update the found object and write the result back if there are any changes
-	if !reflect.DeepEqual(metadataDeployment.Spec, foundDeployment.Spec) {
-		foundDeployment.Spec = metadataDeployment.Spec
-		log.Info("Updating Deployment", "namespace", metadataDeployment.Namespace, "name", metadataDeployment.Name)
-		err = r.Update(context.TODO(), foundDeployment)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
+	} else {
+		// TODO: Update deployment if changed
 	}
 
 	metadataService := &corev1.Service{
@@ -396,19 +378,12 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		log.Info("Creating Service", "namespace", metadataService.Namespace, "name", metadataService.Name)
 		err = r.Create(context.TODO(), metadataService)
 		if err != nil {
-			return reconcile.Result{}, err
+			return reconcile.Result{}, fmt.Errorf("failed to create Service %s: %s", metadataService.Name, err)
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
-	}
-	// Update the found object and write the result back if there are any changes
-	if !reflect.DeepEqual(metadataService.Spec, foundService.Spec) {
-		foundService.Spec = metadataService.Spec
-		log.Info("Updating Service", "namespace", metadataService.Namespace, "name", metadataService.Name)
-		err = r.Update(context.TODO(), foundService)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
+	} else {
+		// TODO: Update resource if changed
 	}
 
 	return reconcile.Result{}, nil
