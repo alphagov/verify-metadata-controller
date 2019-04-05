@@ -175,11 +175,10 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"samlSigningTruststorePassword":     []byte(samlSigningTruststorePassword),
 		"samlSigningKeyType":                []byte(cloudHSMKeyType),
 		"samlSigningKeyLabel":               []byte(samlSigningKeyLabel),
-		"hsmUser":                           []byte(metadataCreds.User),                     // <-| TODO: these should be namespaceCreds
-		"hsmPassword":                       []byte(metadataCreds.Password),                 // <-|
-		"hsmIP":                             []byte(metadataCreds.IP),                       // <-|
-		"hsmCIDR":                           []byte(fmt.Sprintf("%s/32", metadataCreds.IP)), // <-|
-		"hsmCustomerCA.crt":                 []byte(metadataCreds.CustomerCA),               // <-|
+		"hsmUser":                           []byte(metadataCreds.User),       // <-| TODO: these should be namespaceCreds
+		"hsmPassword":                       []byte(metadataCreds.Password),   // <-|
+		"hsmIP":                             []byte(metadataCreds.IP),         // <-|
+		"hsmCustomerCA.crt":                 []byte(metadataCreds.CustomerCA), // <-|
 		// "samlEncryptionCert":               samlEncyptionCert,
 		// "samlEncryptionCertBase64":         samlEncyptionCertBase64,
 		// "samlEncryptionTruststoreBase64":   samlEncryptionTruststoreBase64,
