@@ -307,6 +307,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 							Image: "nginx",
 							Ports: []corev1.ContainerPort{
 								{
+									Name:          "http",
 									ContainerPort: 80,
 								},
 							},
@@ -362,6 +363,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 				{
 					Protocol:   "TCP",
 					Port:       80,
+					Name:       "http",
 					TargetPort: intstr.FromInt(80),
 				},
 			},
