@@ -27,7 +27,7 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - configmaps
+  - secrets
   verbs:
   - get
   - list
@@ -39,7 +39,7 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - configmaps/status
+  - secrets/status
   verbs:
   - get
   - update

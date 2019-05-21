@@ -28,10 +28,37 @@ spec:
           type: object
         spec:
           properties:
+            data:
+              properties:
+                contactCompany:
+                  type: string
+                contactEmail:
+                  type: string
+                contactGivenName:
+                  type: string
+                contactSurname:
+                  type: string
+                entityID:
+                  type: string
+                orgDisplayName:
+                  type: string
+                orgName:
+                  type: string
+                orgURL:
+                  type: string
+                postURL:
+                  type: string
+                redirectURL:
+                  type: string
+              type: object
             enabled:
               type: boolean
             id:
               type: string
+            type:
+              type: string
+          required:
+          - type
           type: object
         status:
           type: object
