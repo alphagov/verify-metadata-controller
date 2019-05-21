@@ -165,11 +165,16 @@ func TestReconcile(t *testing.T) {
 
 	// Update the metadata
 	metadataResourceUpdated := metadataResource
-	metadataResourceUpdated.Spec.Data.OrgName = "updated-org-name"
+	metadataResourceUpdated.Spec.Data.PostURL = "https://new-post-url/"
 	g.Expect(c.Update(ctx, metadataResourceUpdated)).To(Succeed())
 
 	// After updating the Metadata Reconcile should have been called again
 	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+
+	// a new secret should exist
+	secretResource = &corev1.Secret{}
+	g.Eventually(getSecretResource).Should(Succeed())
+	g.Expect(secretResource.Data).To(HaveKeyWithValue("postURL", []byte("https://new-post-url/")))
 
 	// and a new serviceResource should exist
 	prevClusterIP := serviceResource.Spec.ClusterIP
