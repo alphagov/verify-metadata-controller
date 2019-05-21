@@ -367,7 +367,6 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 					TargetPort: intstr.FromInt(80),
 				},
 			},
-			ClusterIP: corev1.ClusterIPNone,
 		},
 	}
 	if err := controllerutil.SetControllerReference(instance, metadataService, r.scheme); err != nil {
@@ -386,7 +385,23 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	} else if err != nil {
 		return reconcile.Result{}, err
 	} else {
-		// TODO: Update resource if changed
+
+		foundService.Spec.Selector = metadataLabels
+		foundService.Spec.Ports = []corev1.ServicePort{
+			{
+				Protocol:   "TCP",
+				Port:       80,
+				Name:       "http",
+				TargetPort: intstr.FromInt(80),
+			},
+		}
+
+		err = r.Update(context.TODO(), foundService)
+		if err != nil {
+			log.Error(err, "namespace", metadataService.Namespace, "name", metadataService.Name)
+			return reconcile.Result{}, err
+		}
+
 	}
 
 	return reconcile.Result{}, nil
