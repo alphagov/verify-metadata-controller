@@ -24,10 +24,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
-	"gopkg.in/yaml.v2"
+	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -46,22 +45,27 @@ import (
 )
 
 const (
-	cloudHSMKeyType    = "cloudhsm"
-	metadataXMLKey     = "metadata.xml"
-	truststorePassword = "mashmallow"
+	cloudHSMKeyType           = "cloudhsm"
+	metadataXMLKey            = "metadata.xml"
+	truststorePassword        = "mashmallow"
+	DefaultCustomerCACertPath = "/opt/cloudhsm/etc/customerCA.crt"
 )
 
 var log = logf.Log.WithName("controller")
 
 // Add creates a new Metadata Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager) error {
-	return add(mgr, newReconciler(mgr))
+func Add(mgr manager.Manager, hsmClient hsm.Client) error {
+	return add(mgr, newReconciler(mgr, hsmClient))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileMetadata{Client: mgr.GetClient(), scheme: mgr.GetScheme()}
+func newReconciler(mgr manager.Manager, hsmClient hsm.Client) reconcile.Reconciler {
+	return &ReconcileMetadata{
+		Client: mgr.GetClient(),
+		scheme: mgr.GetScheme(),
+		hsm:    hsmClient,
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -111,47 +115,12 @@ var _ reconcile.Reconciler = &ReconcileMetadata{}
 type ReconcileMetadata struct {
 	client.Client
 	scheme *runtime.Scheme
+	hsm    hsm.Client
 }
 
-type HSMCredentials struct {
-	IP         string
-	User       string
-	Password   string
-	CustomerCA string
-}
-
-func createRSAKeyPair(label string, hsmCreds HSMCredentials) (publicCert []byte, err error) {
-	log.Info("cloudhsmtool",
-		"command", "genrsa",
-		"label", label,
-	)
-	cmd := exec.Command("/cloudhsmtool/build/install/cloudhsmtool/bin/cloudhsmtool",
-		"genrsa", label,
-	)
-	cmd.Stderr = nil // when nil stderr output is captured in err from Output
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("HSM_USER=%s", hsmCreds.User),
-		fmt.Sprintf("HSM_PASSWORD=%s", hsmCreds.Password),
-		fmt.Sprintf("HSM_IP=%s", hsmCreds.IP),
-	)
-	cert, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate rsa key for %s: %s", label, err)
-	}
-	if !strings.Contains(string(cert), "--BEGIN CERTIFICATE--") {
-		return nil, fmt.Errorf("generated %s certificate does not appear to be a valid PEM format: %s", label, cert)
-	}
-	return cert, nil
-}
-
-func findOrCreateRSAKeyPair(label string, hsmCreds HSMCredentials) (signingCert []byte, err error) {
-	return createRSAKeyPair(label, hsmCreds)
-}
-
-func generateMetadataSecret(instance *verifyv1beta1.Metadata, metadataCreds HSMCredentials, namespaceCreds HSMCredentials) (*corev1.Secret, error) {
-
+func (r *ReconcileMetadata) generateMetadataSecret(instance *verifyv1beta1.Metadata, metadataCreds hsm.Credentials, namespaceCreds hsm.Credentials) (*corev1.Secret, error) {
 	metadataSigningKeyLabel := "metadata"
-	metadataSigningCert, err := findOrCreateRSAKeyPair(metadataSigningKeyLabel, metadataCreds)
+	metadataSigningCert, err := r.hsm.FindOrCreateRSAKeyPair(metadataSigningKeyLabel, metadataCreds)
 	if err != nil {
 		return nil, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", metadataSigningKeyLabel, err)
 	}
@@ -160,7 +129,7 @@ func generateMetadataSecret(instance *verifyv1beta1.Metadata, metadataCreds HSMC
 		return nil, err
 	}
 
-	signedMetadata, err := generateAndSignMetadata(metadataSigningCert, metadataSigningKeyLabel, instance.Spec, metadataCreds)
+	signedMetadata, err := r.hsm.GenerateAndSignMetadata(metadataSigningCert, metadataSigningKeyLabel, instance.Spec, metadataCreds)
 	if err != nil {
 		return nil, fmt.Errorf("generateAndSignMetadata(%s): %s", metadataSigningKeyLabel, err)
 	}
@@ -252,19 +221,22 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	err = r.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, foundSecret)
 	if err != nil && errors.IsNotFound(err) {
 		log.Info("Generating Secret", "namespace", instance.Namespace, "name", instance.Name)
-		hsmCustomerCACertPath := "/opt/cloudhsm/etc/customerCA.crt"
+		hsmCustomerCACertPath := os.Getenv("HSM_CUSTOMER_CA_CERT_PATH")
+		if hsmCustomerCACertPath == "" {
+			hsmCustomerCACertPath = DefaultCustomerCACertPath
+		}
 		hsmCustomerCA, err := ioutil.ReadFile(hsmCustomerCACertPath)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		hsmCreds := HSMCredentials{
+		hsmCreds := hsm.Credentials{
 			IP:         os.Getenv("HSM_IP"),
 			User:       os.Getenv("HSM_USER"),
 			Password:   os.Getenv("HSM_PASSWORD"),
 			CustomerCA: string(hsmCustomerCA),
 		}
 
-		metadataSecret, err := generateMetadataSecret(instance, hsmCreds, hsmCreds) // TODO: use different hsm creds for metadata signing vs generated per-namespace keypairs
+		metadataSecret, err := r.generateMetadataSecret(instance, hsmCreds, hsmCreds) // TODO: use different hsm creds for metadata signing vs generated per-namespace keypairs
 		if err != nil {
 			log.Error(err, "generating-metadata")
 			return reconcile.Result{}, err
@@ -437,114 +409,11 @@ func generateTruststore(cert []byte, alias, storePass string) ([]byte, error) {
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate truststore for %s: %s", alias, out)
+		return nil, fmt.Errorf("failed to generate truststore for %s: %s: %s", alias, out, string(cert))
 	}
 	b, err := ioutil.ReadFile(tmpTruststorePath)
 	if err != nil {
 		return nil, err
 	}
 	return b, nil
-}
-
-func generateAndSignMetadata(metadataSigningCert []byte, metadataSigningKeyLabel string, spec verifyv1beta1.MetadataSpec, hsmCreds HSMCredentials) (signedMetadata []byte, err error) {
-	if spec.Type == "" {
-		return nil, fmt.Errorf("spec.Type must be set")
-	}
-	specFileName, err := createGeneratorFile(spec.Data)
-	defer os.Remove(specFileName)
-	if err != nil {
-		return nil, err
-	}
-
-	tmpDir, err := ioutil.TempDir("", "mdgen")
-	if err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(tmpDir)
-	tmpMetadataSigningCertPath := filepath.Join(tmpDir, "cert.pem")
-	tmpMetadataOutputPath := filepath.Join(tmpDir, "metadata.xml")
-
-	if err := ioutil.WriteFile(tmpMetadataSigningCertPath, metadataSigningCert, 0644); err != nil {
-		return nil, err
-	}
-
-	log.Info("mdgen",
-		"type", spec.Type,
-		"input", specFileName,
-		"output", tmpMetadataOutputPath,
-		"label", metadataSigningKeyLabel,
-	)
-	cmd := exec.Command("/mdgen/build/install/mdgen/bin/mdgen", spec.Type,
-		specFileName, tmpMetadataSigningCertPath,
-		"--output", tmpMetadataOutputPath,
-		"--algorithm", "rsa",
-		"--credential", "cloudhsm",
-		"--hsm-key-label", metadataSigningKeyLabel,
-	)
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("HSM_USER=%s", hsmCreds.User),
-		fmt.Sprintf("HSM_PASSWORD=%s", hsmCreds.Password),
-		fmt.Sprintf("HSM_IP=%s", hsmCreds.IP),
-	)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute mdgen: %s", out)
-	}
-
-	b, err := ioutil.ReadFile(tmpMetadataOutputPath)
-	if err != nil {
-		return nil, err
-	}
-	if len(b) == 0 {
-		return nil, fmt.Errorf("no metadata generated from mdgen: %s", out)
-	}
-
-	log.Info("mdgen-done",
-		"metadata", string(b),
-	)
-	return b, nil
-}
-
-func createGeneratorFile(spec verifyv1beta1.MetadataSigningSpec) (fileName string, err error) {
-	specContents, err := yaml.Marshal(
-		struct {
-			EntityID         string `yaml:"entity_id"`
-			PostURL          string `yaml:"post_url"`
-			RedirectURL      string `yaml:"redirect_url"`
-			OrgName          string `yaml:"org_name"`
-			OrgDisplayName   string `yaml:"org_display_name"`
-			OrgURL           string `yaml:"org_url"`
-			ContactCompany   string `yaml:"contact_company"`
-			ContactGivenName string `yaml:"contact_given_name"`
-			ContactSurname   string `yaml:"contact_surname"`
-			ContactEmail     string `yaml:"contact_email"`
-		}{
-			EntityID:         spec.EntityID,
-			PostURL:          spec.PostURL,
-			RedirectURL:      spec.RedirectURL,
-			OrgName:          spec.OrgName,
-			OrgDisplayName:   spec.OrgDisplayName,
-			OrgURL:           spec.OrgURL,
-			ContactCompany:   spec.ContactCompany,
-			ContactGivenName: spec.ContactGivenName,
-			ContactSurname:   spec.ContactSurname,
-			ContactEmail:     spec.ContactEmail,
-		},
-	)
-	if err != nil {
-		return "", err
-	}
-
-	specFile, err := ioutil.TempFile("", "sign_spec")
-	if err != nil {
-		return "", err
-	}
-	defer specFile.Close()
-
-	_, err = specFile.Write(specContents)
-	if err != nil {
-		return "", err
-	}
-
-	return specFile.Name(), nil
 }
