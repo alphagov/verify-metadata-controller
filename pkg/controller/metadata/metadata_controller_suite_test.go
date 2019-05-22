@@ -52,17 +52,23 @@ func TestMain(m *testing.M) {
 
 // SetupTestReconcile returns a reconcile.Reconcile implementation that delegates to inner and
 // writes the request to requests after Reconcile is finished.
-func SetupTestReconcile(inner reconcile.Reconciler, t *testing.T) (reconcile.Reconciler, chan reconcile.Request) {
-	requests := make(chan reconcile.Request, 1024)
-	fn := reconcile.Func(func(req reconcile.Request) (reconcile.Result, error) {
+func SetupTestReconcile(inner reconcile.Reconciler, t *testing.T) (reconcile.Reconciler, func() int) {
+	callCount := 0
+	var mu sync.Mutex
+	reconcileFn := reconcile.Func(func(req reconcile.Request) (reconcile.Result, error) {
+		mu.Lock()
+		defer mu.Unlock()
 		result, err := inner.Reconcile(req)
 		if err != nil {
 			t.Fatalf("Reconcile returned: %s", err)
 		}
-		requests <- req
+		callCount++
 		return result, err
 	})
-	return fn, requests
+	callCountFn := func() int {
+		return callCount
+	}
+	return reconcileFn, callCountFn
 }
 
 // StartTestManager adds recFn

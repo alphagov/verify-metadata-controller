@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const timeout = time.Second * 5
@@ -63,7 +62,7 @@ func TestReconcile(t *testing.T) {
 	mgr, err := manager.New(cfg, manager.Options{})
 	g.Expect(err).NotTo(HaveOccurred())
 	c := mgr.GetClient()
-	recFn, requests := SetupTestReconcile(newReconciler(mgr, hsmClient), t)
+	recFn, reconcileCallCount := SetupTestReconcile(newReconciler(mgr, hsmClient), t)
 	g.Expect(add(mgr, recFn)).NotTo(HaveOccurred())
 	stopMgr, mgrStopped := StartTestManager(mgr, g)
 	defer func() {
@@ -104,19 +103,16 @@ func TestReconcile(t *testing.T) {
 		Name:      metadataResource.ObjectMeta.Name,
 		Namespace: metadataResource.ObjectMeta.Namespace,
 	}
-	expectedRequest := reconcile.Request{
-		NamespacedName: expectedName,
-	}
 	expectedLabels := map[string]string{
 		"deployment": metadataResource.ObjectMeta.Name + "-deployment",
 	}
 
-	// After create the Reconcile function should be called with the expected request object
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	// The Reconcile function should have been called exactly once
+	g.Eventually(reconcileCallCount, timeout).Should(Equal(1))
+	g.Consistently(reconcileCallCount, timeout).Should(Equal(1))
 
-	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called
-	// TODO: improve this check for correct number of expected calls
-	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(BeNumerically(">", 1))
+	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called once so far
+	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(1))
 
 	// We expect a Secret to be created
 	secretResource := &corev1.Secret{}
@@ -183,7 +179,7 @@ func TestReconcile(t *testing.T) {
 	g.Expect(c.Update(ctx, metadataResourceUpdated)).To(Succeed())
 
 	// After updating the Metadata Reconcile should have been called again
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(reconcileCallCount, timeout).Should(Equal(2))
 
 	// We expect the Secret data field(s) to get updated
 	g.Eventually(getSecretData("postURL")).Should(Equal([]byte("https://new-post-url/")))
@@ -195,4 +191,11 @@ func TestReconcile(t *testing.T) {
 
 	// We expect the Service ClusterIP to be unchanged
 	g.Expect(serviceResource.Spec.ClusterIP).To(Equal(prevClusterIP))
+
+	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called only
+	// twice in total (once initially, once after update)
+	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(2))
+
+	// We do not expecyt the Reconcile func to have been called more than 2 times
+	g.Consistently(reconcileCallCount, timeout).Should(Equal(2))
 }

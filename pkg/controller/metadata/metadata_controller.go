@@ -27,6 +27,7 @@ import (
 
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
 	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
+	"github.com/mitchellh/hashstructure"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -49,6 +50,7 @@ const (
 	metadataXMLKey            = "metadata.xml"
 	truststorePassword        = "mashmallow"
 	DefaultCustomerCACertPath = "/opt/cloudhsm/etc/customerCA.crt"
+	versionAnnotation         = "metadata-version"
 )
 
 var log = logf.Log.WithName("controller")
@@ -82,29 +84,35 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// Watch for changes to created Deployments
-	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
-		OwnerType: &verifyv1beta1.Metadata{},
-	})
-	if err != nil {
-		return err
-	}
+	// Uncomment to: Watch for deleted Deployments and bring back to life
+	// We have disabled this as it caused a large amount of noise as the Reconcile func would be
+	// executed constantly and the self-healing of deleted resources was of limited value
+	// err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
+	// 	OwnerType: &verifyv1beta1.Metadata{},
+	// })
+	// if err != nil {
+	// 	return err
+	// }
 
-	// Watch for changes to created Secret
-	err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestForOwner{
-		OwnerType: &verifyv1beta1.Metadata{},
-	})
-	if err != nil {
-		return err
-	}
+	// Uncomment to: Watch for changes to created Secret
+	// We have disabled this as it caused a large amount of noise as the Reconcile func would be
+	// executed constantly and the self-healing of deleted resources was of limited value
+	// err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestForOwner{
+	// 	OwnerType: &verifyv1beta1.Metadata{},
+	// })
+	// if err != nil {
+	// 	return err
+	// }
 
-	// Watch for changes to created Services
-	err = c.Watch(&source.Kind{Type: &corev1.Service{}}, &handler.EnqueueRequestForOwner{
-		OwnerType: &verifyv1beta1.Metadata{},
-	})
-	if err != nil {
-		return err
-	}
+	// Uncomment to: Watch for changes to created Services
+	// We have disabled this as it caused a large amount of noise as the Reconcile func would be
+	// executed constantly and the self-healing of deleted resources was of limited value
+	// err = c.Watch(&source.Kind{Type: &corev1.Service{}}, &handler.EnqueueRequestForOwner{
+	// 	OwnerType: &verifyv1beta1.Metadata{},
+	// })
+	// if err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
@@ -191,6 +199,27 @@ func (r *ReconcileMetadata) generateMetadataSecret(instance *verifyv1beta1.Metad
 	return secret, nil
 }
 
+func (r *ReconcileMetadata) getCredentials() (hsm.Credentials, error) {
+	hsmCustomerCACertPath := os.Getenv("HSM_CUSTOMER_CA_CERT_PATH")
+	if hsmCustomerCACertPath == "" {
+		hsmCustomerCACertPath = DefaultCustomerCACertPath
+	}
+	hsmCustomerCA, err := ioutil.ReadFile(hsmCustomerCACertPath)
+	if err != nil {
+		return hsm.Credentials{}, fmt.Errorf("failed to read %s: %s", hsmCustomerCACertPath, err)
+	}
+	if len(hsmCustomerCA) == 0 {
+		return hsm.Credentials{}, fmt.Errorf("%s certificate was zero bytes", hsmCustomerCACertPath)
+	}
+	hsmCreds := hsm.Credentials{
+		IP:         os.Getenv("HSM_IP"),
+		User:       os.Getenv("HSM_USER"),
+		Password:   os.Getenv("HSM_PASSWORD"),
+		CustomerCA: string(hsmCustomerCA),
+	}
+	return hsmCreds, nil
+}
+
 // Reconcile reads that state of the cluster for a Metadata object and makes changes based on the state read
 // and what is in the Metadata.Spec
 // Automatically generate RBAC rules to allow the Controller to read and write Deployments
@@ -203,8 +232,6 @@ func (r *ReconcileMetadata) generateMetadataSecret(instance *verifyv1beta1.Metad
 // +kubebuilder:rbac:groups=verify.gov.uk,resources=metadata,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=verify.gov.uk,resources=metadata/status,verbs=get;update;patch
 func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	fmt.Println("----------------------------------------")
-
 	// Fetch the Metadata instance
 	instance := &verifyv1beta1.Metadata{}
 	err := r.Get(context.TODO(), request.NamespacedName, instance)
@@ -218,28 +245,18 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 
-	//==========
-	hsmCustomerCACertPath := os.Getenv("HSM_CUSTOMER_CA_CERT_PATH")
-	if hsmCustomerCACertPath == "" {
-		hsmCustomerCACertPath = DefaultCustomerCACertPath
-	}
-	hsmCustomerCA, err := ioutil.ReadFile(hsmCustomerCACertPath)
+	// Grab the VMC's HSM creds
+	hsmCreds, err := r.getCredentials()
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	if len(hsmCustomerCA) == 0 {
-		return reconcile.Result{}, fmt.Errorf("no-cert")
+	// Generate a hash of the metadata values
+	currentVersionInt, err := hashstructure.Hash(instance.Spec, nil)
+	if err != nil {
+		return reconcile.Result{}, err
 	}
-
-	hsmCreds := hsm.Credentials{
-		IP:         os.Getenv("HSM_IP"),
-		User:       os.Getenv("HSM_USER"),
-		Password:   os.Getenv("HSM_PASSWORD"),
-		CustomerCA: string(hsmCustomerCA),
-	}
-
-	//==============
+	currentVersion := fmt.Sprintf("%d", currentVersionInt)
 
 	// Find or create metadataSecret
 	foundSecret := &corev1.Secret{}
@@ -288,6 +305,9 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
+			Annotations: map[string]string{
+				versionAnnotation: currentVersion,
+			},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
@@ -345,14 +365,22 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else {
-		// TODO: Update deployment if changed
+	} else if foundDeployment.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
+		log.Info("Updating Deployment", "namespace", metadataDeployment.Namespace, "name", metadataDeployment.Name)
+		err = r.Update(context.TODO(), foundDeployment)
+		if err != nil {
+			log.Error(err, "namespace", metadataDeployment.Namespace, "name", metadataDeployment.Name)
+			return reconcile.Result{}, err
+		}
 	}
 
 	metadataService := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
+			Annotations: map[string]string{
+				versionAnnotation: currentVersion,
+			},
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: metadataLabels,
@@ -381,7 +409,8 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else {
+	} else if foundService.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
+		log.Info("Updating Service", "namespace", metadataService.Namespace, "name", metadataService.Name)
 
 		foundService.Spec.Selector = metadataLabels
 		foundService.Spec.Ports = []corev1.ServicePort{
