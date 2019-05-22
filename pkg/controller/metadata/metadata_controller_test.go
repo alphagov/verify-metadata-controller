@@ -192,10 +192,19 @@ func TestReconcile(t *testing.T) {
 	// We expect the Service ClusterIP to be unchanged
 	g.Expect(serviceResource.Spec.ClusterIP).To(Equal(prevClusterIP))
 
+	// Update the metadata a third time, but with no changes that affect generated metadata
+	metadataResourceUpdated.ObjectMeta.Annotations = map[string]string{
+		"inconsequental-annotation": "nothing-to-see-here",
+	}
+	g.Expect(c.Update(ctx, metadataResourceUpdated)).To(Succeed())
+
+	// After updating the Metadata Reconcile should have been called again
+	g.Eventually(reconcileCallCount, timeout).Should(Equal(3))
+
 	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called only
-	// twice in total (once initially, once after update)
+	// twice in total (once initially, once after first update, NOT after second update)
 	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(2))
 
-	// We do not expecyt the Reconcile func to have been called more than 2 times
-	g.Consistently(reconcileCallCount, timeout).Should(Equal(2))
+	// We do not expecyt the Reconcile func to have been called more than 3 times (create, update, update)
+	g.Consistently(reconcileCallCount, timeout).Should(Equal(3))
 }

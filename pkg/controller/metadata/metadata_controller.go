@@ -126,7 +126,7 @@ type ReconcileMetadata struct {
 	hsm    hsm.Client
 }
 
-func (r *ReconcileMetadata) generateMetadataSecret(instance *verifyv1beta1.Metadata, metadataCreds hsm.Credentials, namespaceCreds hsm.Credentials) (*corev1.Secret, error) {
+func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.Metadata, metadataCreds hsm.Credentials, namespaceCreds hsm.Credentials) (map[string][]byte, error) {
 	metadataSigningKeyLabel := "metadata"
 	metadataSigningCert, err := r.hsm.FindOrCreateRSAKeyPair(metadataSigningKeyLabel, metadataCreds)
 	if err != nil {
@@ -154,49 +154,41 @@ func (r *ReconcileMetadata) generateMetadataSecret(instance *verifyv1beta1.Metad
 	// etc...
 
 	// generate Secret containing generated assets (including signed metadata xml)
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
-		},
-		Type:       corev1.SecretTypeOpaque,
-		StringData: map[string]string{},
-		Data: map[string][]byte{
-			metadataXMLKey:                      []byte(signedMetadata),
-			"entityID":                          []byte(instance.Spec.Data.EntityID),
-			"postURL":                           []byte(instance.Spec.Data.PostURL),
-			"redirectURL":                       []byte(instance.Spec.Data.RedirectURL),
-			"metadataType":                      []byte(instance.Spec.Type),
-			"metadataInternalURL":               []byte(fmt.Sprintf("http://%s/metadata.xml", instance.Name)),
-			"metadataSigningKeyType":            []byte(cloudHSMKeyType),
-			"metadataSigningKeyLabel":           []byte(metadataSigningKeyLabel),
-			"metadataSigningCert":               []byte(metadataSigningCert),
-			"metadataSigningCertBase64":         []byte(base64.StdEncoding.EncodeToString(metadataSigningCert)),
-			"metadataSigningTruststore":         []byte(metadataSigningTruststore),
-			"metadataSigningTruststoreBase64":   []byte(base64.StdEncoding.EncodeToString(metadataSigningTruststore)),
-			"metadataSigningTruststorePassword": []byte(truststorePassword),
-			"samlSigningCert":                   []byte(samlSigningCert),
-			"samlSigningCertBase64":             []byte(base64.StdEncoding.EncodeToString(samlSigningCert)),
-			"samlSigningTruststore":             []byte(samlSigningTruststore),
-			"samlSigningTruststoreBase64":       []byte(base64.StdEncoding.EncodeToString(samlSigningTruststore)),
-			"samlSigningTruststorePassword":     []byte(samlSigningTruststorePassword),
-			"samlSigningKeyType":                []byte(cloudHSMKeyType),
-			"samlSigningKeyLabel":               []byte(samlSigningKeyLabel),
-			"hsmUser":                           []byte(metadataCreds.User),                     // <-| TODO: these should be namespaceCreds
-			"hsmPassword":                       []byte(metadataCreds.Password),                 // <-|
-			"hsmIP":                             []byte(metadataCreds.IP),                       // <-|
-			"hsmCIDR":                           []byte(fmt.Sprintf("%s/32", metadataCreds.IP)), // <-|
-			"hsmCustomerCA.crt":                 []byte(metadataCreds.CustomerCA),               // <-|
-			// "samlEncryptionCert":               samlEncyptionCert,
-			// "samlEncryptionCertBase64":         samlEncyptionCertBase64,
-			// "samlEncryptionTruststoreBase64":   samlEncryptionTruststoreBase64,
-			// "samlEncryptionTruststorePassword": samlEncryptionTruststorePassword,
-			// "samlEncryptionKeyLabel":           samlEncryptionKeyLabel,
-			// "samlEncryptionTruststore":        samlEncryptionTruststore,
-			// .. etc
-		},
+	data := map[string][]byte{
+		metadataXMLKey:                      []byte(signedMetadata),
+		"entityID":                          []byte(instance.Spec.Data.EntityID),
+		"postURL":                           []byte(instance.Spec.Data.PostURL),
+		"redirectURL":                       []byte(instance.Spec.Data.RedirectURL),
+		"metadataType":                      []byte(instance.Spec.Type),
+		"metadataInternalURL":               []byte(fmt.Sprintf("http://%s/metadata.xml", instance.Name)),
+		"metadataSigningKeyType":            []byte(cloudHSMKeyType),
+		"metadataSigningKeyLabel":           []byte(metadataSigningKeyLabel),
+		"metadataSigningCert":               []byte(metadataSigningCert),
+		"metadataSigningCertBase64":         []byte(base64.StdEncoding.EncodeToString(metadataSigningCert)),
+		"metadataSigningTruststore":         []byte(metadataSigningTruststore),
+		"metadataSigningTruststoreBase64":   []byte(base64.StdEncoding.EncodeToString(metadataSigningTruststore)),
+		"metadataSigningTruststorePassword": []byte(truststorePassword),
+		"samlSigningCert":                   []byte(samlSigningCert),
+		"samlSigningCertBase64":             []byte(base64.StdEncoding.EncodeToString(samlSigningCert)),
+		"samlSigningTruststore":             []byte(samlSigningTruststore),
+		"samlSigningTruststoreBase64":       []byte(base64.StdEncoding.EncodeToString(samlSigningTruststore)),
+		"samlSigningTruststorePassword":     []byte(samlSigningTruststorePassword),
+		"samlSigningKeyType":                []byte(cloudHSMKeyType),
+		"samlSigningKeyLabel":               []byte(samlSigningKeyLabel),
+		"hsmUser":                           []byte(metadataCreds.User),                     // <-| TODO: these should be namespaceCreds
+		"hsmPassword":                       []byte(metadataCreds.Password),                 // <-|
+		"hsmIP":                             []byte(metadataCreds.IP),                       // <-|
+		"hsmCIDR":                           []byte(fmt.Sprintf("%s/32", metadataCreds.IP)), // <-|
+		"hsmCustomerCA.crt":                 []byte(metadataCreds.CustomerCA),               // <-|
+		// "samlEncryptionCert":               samlEncyptionCert,
+		// "samlEncryptionCertBase64":         samlEncyptionCertBase64,
+		// "samlEncryptionTruststoreBase64":   samlEncryptionTruststoreBase64,
+		// "samlEncryptionTruststorePassword": samlEncryptionTruststorePassword,
+		// "samlEncryptionKeyLabel":           samlEncryptionKeyLabel,
+		// "samlEncryptionTruststore":        samlEncryptionTruststore,
+		// .. etc
 	}
-	return secret, nil
+	return data, nil
 }
 
 func (r *ReconcileMetadata) getCredentials() (hsm.Credentials, error) {
@@ -263,11 +255,21 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	err = r.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, foundSecret)
 	if err != nil && errors.IsNotFound(err) {
 		log.Info("Generating Secret", "namespace", instance.Namespace, "name", instance.Name)
-
-		metadataSecret, err := r.generateMetadataSecret(instance, hsmCreds, hsmCreds) // TODO: use different hsm creds for metadata signing vs generated per-namespace keypairs
+		metadataSecretData, err := r.generateMetadataSecretData(instance, hsmCreds, hsmCreds) // TODO: use different hsm creds for metadata signing vs generated per-namespace keypairs
 		if err != nil {
-			log.Error(err, "generating-metadata")
 			return reconcile.Result{}, err
+		}
+		metadataSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      instance.Name,
+				Namespace: instance.Namespace,
+				Annotations: map[string]string{
+					versionAnnotation: currentVersion,
+				},
+			},
+			Type:       corev1.SecretTypeOpaque,
+			StringData: map[string]string{},
+			Data:       metadataSecretData,
 		}
 		if err := controllerutil.SetControllerReference(instance, metadataSecret, r.scheme); err != nil {
 			return reconcile.Result{}, err
@@ -279,22 +281,18 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else {
-
-		metadataSecret, err := r.generateMetadataSecret(instance, hsmCreds, hsmCreds)
+	} else if foundSecret.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
+		log.Info("Updating Secret", "namespace", instance.Namespace, "name", instance.Name)
+		updatedData, err := r.generateMetadataSecretData(instance, hsmCreds, hsmCreds)
 		if err != nil {
-			log.Error(err, "generating-metadata-for-update")
 			return reconcile.Result{}, err
 		}
-
-		foundSecret.Data = metadataSecret.Data
-
+		foundSecret.ObjectMeta.Annotations[versionAnnotation] = currentVersion
+		foundSecret.Data = updatedData
 		err = r.Update(context.TODO(), foundSecret)
 		if err != nil {
-			log.Error(err, "namespace", foundSecret.ObjectMeta.Namespace, "name", foundSecret.ObjectMeta.Name)
 			return reconcile.Result{}, fmt.Errorf("failed to update Secret %s: %s", foundSecret.ObjectMeta.Name, err)
 		}
-
 	}
 
 	metadataLabels := map[string]string{
@@ -369,7 +367,6 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		log.Info("Updating Deployment", "namespace", metadataDeployment.Namespace, "name", metadataDeployment.Name)
 		err = r.Update(context.TODO(), foundDeployment)
 		if err != nil {
-			log.Error(err, "namespace", metadataDeployment.Namespace, "name", metadataDeployment.Name)
 			return reconcile.Result{}, err
 		}
 	}
@@ -424,7 +421,6 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 
 		err = r.Update(context.TODO(), foundService)
 		if err != nil {
-			log.Error(err, "namespace", metadataService.Namespace, "name", metadataService.Name)
 			return reconcile.Result{}, err
 		}
 
