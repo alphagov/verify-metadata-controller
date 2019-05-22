@@ -42,6 +42,7 @@ vet:
 # Generate code
 generate:
 	go generate ./pkg/... ./cmd/...
+	counterfeiter pkg/hsm/ Client
 
 # Build the docker image
 docker-build:
