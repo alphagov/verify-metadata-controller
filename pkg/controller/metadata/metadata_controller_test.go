@@ -104,7 +104,7 @@ func TestReconcile(t *testing.T) {
 		Namespace: metadataResource.ObjectMeta.Namespace,
 	}
 	expectedLabels := map[string]string{
-		"deployment": metadataResource.ObjectMeta.Name + "-deployment",
+		"deployment": metadataResource.ObjectMeta.Name,
 	}
 
 	// The Reconcile function should have been called exactly once
