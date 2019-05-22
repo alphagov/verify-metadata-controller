@@ -255,8 +255,8 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	err = r.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, foundSecret)
 	if err != nil && errors.IsNotFound(err) {
 		log.Info("creating-secret",
-			"namespace", metadataSecret.Namespace,
-			"name", metadataSecret.Name,
+			"namespace", instance.Namespace,
+			"name", instance.Name,
 			"version", currentVersion,
 		)
 		metadataSecretData, err := r.generateMetadataSecretData(instance, hsmCreds, hsmCreds) // TODO: use different hsm creds for metadata signing vs generated per-namespace keypairs
