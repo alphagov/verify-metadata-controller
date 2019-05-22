@@ -50,7 +50,7 @@ const (
 	metadataXMLKey            = "metadata.xml"
 	truststorePassword        = "mashmallow"
 	DefaultCustomerCACertPath = "/opt/cloudhsm/etc/customerCA.crt"
-	versionAnnotation         = "metadata-version"
+	VersionAnnotation         = "metadata-version"
 )
 
 var log = logf.Log.WithName("controller")
@@ -264,7 +264,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 				Name:      instance.Name,
 				Namespace: instance.Namespace,
 				Annotations: map[string]string{
-					versionAnnotation: currentVersion,
+					VersionAnnotation: currentVersion,
 				},
 			},
 			Type:       corev1.SecretTypeOpaque,
@@ -281,13 +281,13 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else if foundSecret.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
+	} else if foundSecret.ObjectMeta.Annotations[VersionAnnotation] != currentVersion {
 		log.Info("Updating Secret", "namespace", instance.Namespace, "name", instance.Name)
 		updatedData, err := r.generateMetadataSecretData(instance, hsmCreds, hsmCreds)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		foundSecret.ObjectMeta.Annotations[versionAnnotation] = currentVersion
+		foundSecret.ObjectMeta.Annotations[VersionAnnotation] = currentVersion
 		foundSecret.Data = updatedData
 		err = r.Update(context.TODO(), foundSecret)
 		if err != nil {
@@ -304,7 +304,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 			Annotations: map[string]string{
-				versionAnnotation: currentVersion,
+				VersionAnnotation: currentVersion,
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -363,7 +363,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else if foundDeployment.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
+	} else if foundDeployment.ObjectMeta.Annotations[VersionAnnotation] != currentVersion {
 		log.Info("Updating Deployment", "namespace", metadataDeployment.Namespace, "name", metadataDeployment.Name)
 		err = r.Update(context.TODO(), foundDeployment)
 		if err != nil {
@@ -376,7 +376,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 			Annotations: map[string]string{
-				versionAnnotation: currentVersion,
+				VersionAnnotation: currentVersion,
 			},
 		},
 		Spec: corev1.ServiceSpec{
@@ -406,7 +406,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		}
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else if foundService.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
+	} else if foundService.ObjectMeta.Annotations[VersionAnnotation] != currentVersion {
 		log.Info("Updating Service", "namespace", metadataService.Namespace, "name", metadataService.Name)
 
 		foundService.Spec.Selector = metadataLabels

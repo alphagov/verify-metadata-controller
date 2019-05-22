@@ -120,6 +120,8 @@ func TestReconcile(t *testing.T) {
 		return c.Get(ctx, expectedName, secretResource)
 	}
 	g.Eventually(getSecretResource).Should(Succeed())
+	g.Expect(secretResource.ObjectMeta.Annotations).ShouldNot(BeNil())
+	g.Expect(secretResource.ObjectMeta.Annotations[VersionAnnotation]).ShouldNot(Equal(""))
 
 	// We expect the Secret Data values to be generated from Metadata
 	getSecretData := func(key string) func() ([]byte, error) {
