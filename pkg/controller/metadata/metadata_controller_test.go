@@ -44,6 +44,8 @@ func TestReconcile(t *testing.T) {
 	// Load test certs
 	metadataSigningCert, err := ioutil.ReadFile("test.metadata.signing.crt")
 	g.Expect(err).NotTo(HaveOccurred())
+	fakeCustomerCA, err := ioutil.ReadFile("test.ca.crt")
+	g.Expect(err).NotTo(HaveOccurred())
 
 	// Setup a fake env
 	os.Setenv("HSM_IP", "10.0.10.100")
@@ -113,10 +115,8 @@ func TestReconcile(t *testing.T) {
 	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
 
 	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called
-	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(1))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	// TODO: improve this check for correct number of expected calls
+	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(BeNumerically(">", 1))
 
 	// We expect a Secret to be created
 	secretResource := &corev1.Secret{}
@@ -124,20 +124,31 @@ func TestReconcile(t *testing.T) {
 		return c.Get(ctx, expectedName, secretResource)
 	}
 	g.Eventually(getSecretResource).Should(Succeed())
-	g.Expect(secretResource.Data).To(HaveKeyWithValue("metadata.xml", fakeSignedMetadata))
-	g.Expect(secretResource.Data).To(HaveKeyWithValue("entityID", []byte("https://mything/")))
-	g.Expect(secretResource.Data).To(HaveKeyWithValue("postURL", []byte("https://mything/POST")))
-	g.Expect(secretResource.Data).To(HaveKeyWithValue("redirectURL", []byte("https://mything/Redirect")))
-	g.Expect(secretResource.Data).To(HaveKeyWithValue("hsmUser", []byte("hsm-user")))
-	g.Expect(secretResource.Data).To(HaveKeyWithValue("hsmPassword", []byte("hsm-pass")))
-	g.Expect(secretResource.Data).To(HaveKeyWithValue("hsmIP", []byte("10.0.10.100")))
-	g.Expect(secretResource.Data).To(HaveKey("metadataSigningCert"))
-	g.Expect(secretResource.Data).To(HaveKey("metadataSigningKeyLabel"))
-	g.Expect(secretResource.Data).To(HaveKey("metadataSigningTruststore"))
-	g.Expect(secretResource.Data).To(HaveKey("samlSigningCert"))
-	g.Expect(secretResource.Data).To(HaveKey("samlSigningKeyLabel"))
-	g.Expect(secretResource.Data).To(HaveKey("samlSigningTruststore"))
-	g.Expect(secretResource.Data).To(HaveKey("hsmCustomerCA.crt"))
+
+	// We expect the Secret Data values to be generated from Metadata
+	getSecretData := func(key string) func() ([]byte, error) {
+		return func() ([]byte, error) {
+			s := &corev1.Secret{}
+			if err := c.Get(ctx, expectedName, s); err != nil {
+				return nil, err
+			}
+			return s.Data[key], nil
+		}
+	}
+	g.Eventually(getSecretData("metadata.xml")).Should(Equal(fakeSignedMetadata))
+	g.Eventually(getSecretData("entityID")).Should(Equal([]byte("https://mything/")))
+	g.Eventually(getSecretData("postURL")).Should(Equal([]byte("https://mything/POST")))
+	g.Eventually(getSecretData("redirectURL")).Should(Equal([]byte("https://mything/Redirect")))
+	g.Eventually(getSecretData("hsmUser")).Should(Equal([]byte("hsm-user")))
+	g.Eventually(getSecretData("hsmPassword")).Should(Equal([]byte("hsm-pass")))
+	g.Eventually(getSecretData("hsmIP")).Should(Equal([]byte("10.0.10.100")))
+	g.Eventually(getSecretData("metadataSigningCert")).Should(Equal(metadataSigningCert))
+	g.Eventually(getSecretData("metadataSigningTruststore")).ShouldNot(Equal([]byte{}))
+	g.Eventually(getSecretData("metadataSigningKeyLabel")).Should(Equal([]byte("metadata")))
+	g.Eventually(getSecretData("samlSigningCert")).Should(Equal(metadataSigningCert))
+	g.Eventually(getSecretData("samlSigningTruststore")).ShouldNot(Equal([]byte{}))
+	g.Eventually(getSecretData("samlSigningKeyLabel")).Should(Equal([]byte("metadata"))) // FIXME: one day saml key should not be same as metadata key
+	g.Eventually(getSecretData("hsmCustomerCA.crt")).Should(Equal(fakeCustomerCA))
 	// TODO: add the rest of the Secret fields here...
 
 	// We expect a an nginx Deployment to be created with the same name
@@ -173,41 +184,9 @@ func TestReconcile(t *testing.T) {
 
 	// After updating the Metadata Reconcile should have been called again
 	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
-	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
 
-	// a new secret should exist
-	updatedSecretResource := &corev1.Secret{}
-	getUpdatedSecretResource := func() error {
-		return c.Get(ctx, expectedName, updatedSecretResource)
-	}
-
-	g.Eventually(getUpdatedSecretResource).Should(Succeed())
-	g.Expect(secretResource.Data).To(HaveKeyWithValue("postURL", []byte("https://new-post-url/")))
+	// We expect the Secret data field(s) to get updated
+	g.Eventually(getSecretData("postURL")).Should(Equal([]byte("https://new-post-url/")))
 
 	// and a new serviceResource should exist
 	prevClusterIP := serviceResource.Spec.ClusterIP
