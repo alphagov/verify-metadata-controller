@@ -399,7 +399,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		foundDeployment.ObjectMeta.Annotations[VersionAnnotation] = currentVersion
 		err = r.Update(context.TODO(), foundDeployment)
 		if err != nil {
-			return reconcile.Result{}, err
+			return reconcile.Result{}, fmt.Errorf("failed to update Deployment %s: %s", foundDeployment.Name, err)
 		}
 		log.Info("updated-deployment",
 			"namespace", metadataDeployment.Namespace,
@@ -470,7 +470,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		}
 		err = r.Update(context.TODO(), foundService)
 		if err != nil {
-			return reconcile.Result{}, err
+			return reconcile.Result{}, fmt.Errorf("failed to update Service %s: %s", foundService.Name, err)
 		}
 		log.Info("updated-service",
 			"namespace", metadataService.Namespace,
