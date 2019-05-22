@@ -54,8 +54,8 @@ func TestReconcile(t *testing.T) {
 	// Setup fake hsm client
 	fakeSignedMetadata := []byte("<signed>FAKE-SIGNED-META</signed>")
 	hsmClient := &hsmfakes.FakeClient{}
-	hsmClient.FindOrCreateRSAKeyPairReturnsOnCall(0, metadataSigningCert, nil)
-	hsmClient.GenerateAndSignMetadataReturnsOnCall(0, fakeSignedMetadata, nil)
+	hsmClient.FindOrCreateRSAKeyPairReturns(metadataSigningCert, nil)
+	hsmClient.GenerateAndSignMetadataReturns(fakeSignedMetadata, nil)
 
 	// Setup the Manager and Controller.
 	mgr, err := manager.New(cfg, manager.Options{})
@@ -114,6 +114,9 @@ func TestReconcile(t *testing.T) {
 
 	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called
 	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(1))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
 
 	// We expect a Secret to be created
 	secretResource := &corev1.Secret{}
@@ -170,10 +173,40 @@ func TestReconcile(t *testing.T) {
 
 	// After updating the Metadata Reconcile should have been called again
 	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
+	g.Eventually(requests, timeout).Should(Receive(Equal(expectedRequest)))
 
 	// a new secret should exist
-	secretResource = &corev1.Secret{}
-	g.Eventually(getSecretResource).Should(Succeed())
+	updatedSecretResource := &corev1.Secret{}
+	getUpdatedSecretResource := func() error {
+		return c.Get(ctx, expectedName, updatedSecretResource)
+	}
+
+	g.Eventually(getUpdatedSecretResource).Should(Succeed())
 	g.Expect(secretResource.Data).To(HaveKeyWithValue("postURL", []byte("https://new-post-url/")))
 
 	// and a new serviceResource should exist

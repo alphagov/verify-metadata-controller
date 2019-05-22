@@ -203,6 +203,8 @@ func (r *ReconcileMetadata) generateMetadataSecret(instance *verifyv1beta1.Metad
 // +kubebuilder:rbac:groups=verify.gov.uk,resources=metadata,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=verify.gov.uk,resources=metadata/status,verbs=get;update;patch
 func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+	fmt.Println("----------------------------------------")
+
 	// Fetch the Metadata instance
 	instance := &verifyv1beta1.Metadata{}
 	err := r.Get(context.TODO(), request.NamespacedName, instance)
@@ -216,25 +218,34 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 
+	//==========
+	hsmCustomerCACertPath := os.Getenv("HSM_CUSTOMER_CA_CERT_PATH")
+	if hsmCustomerCACertPath == "" {
+		hsmCustomerCACertPath = DefaultCustomerCACertPath
+	}
+	hsmCustomerCA, err := ioutil.ReadFile(hsmCustomerCACertPath)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if len(hsmCustomerCA) == 0 {
+		return reconcile.Result{}, fmt.Errorf("no-cert")
+	}
+
+	hsmCreds := hsm.Credentials{
+		IP:         os.Getenv("HSM_IP"),
+		User:       os.Getenv("HSM_USER"),
+		Password:   os.Getenv("HSM_PASSWORD"),
+		CustomerCA: string(hsmCustomerCA),
+	}
+
+	//==============
+
 	// Find or create metadataSecret
 	foundSecret := &corev1.Secret{}
 	err = r.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, foundSecret)
 	if err != nil && errors.IsNotFound(err) {
 		log.Info("Generating Secret", "namespace", instance.Namespace, "name", instance.Name)
-		hsmCustomerCACertPath := os.Getenv("HSM_CUSTOMER_CA_CERT_PATH")
-		if hsmCustomerCACertPath == "" {
-			hsmCustomerCACertPath = DefaultCustomerCACertPath
-		}
-		hsmCustomerCA, err := ioutil.ReadFile(hsmCustomerCACertPath)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		hsmCreds := hsm.Credentials{
-			IP:         os.Getenv("HSM_IP"),
-			User:       os.Getenv("HSM_USER"),
-			Password:   os.Getenv("HSM_PASSWORD"),
-			CustomerCA: string(hsmCustomerCA),
-		}
 
 		metadataSecret, err := r.generateMetadataSecret(instance, hsmCreds, hsmCreds) // TODO: use different hsm creds for metadata signing vs generated per-namespace keypairs
 		if err != nil {
@@ -252,7 +263,21 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	} else if err != nil {
 		return reconcile.Result{}, err
 	} else {
-		// TODO: we may want to handle updates to self-heal metadata, but this would need to be more inteligent than below
+
+		metadataSecret, err := r.generateMetadataSecret(instance, hsmCreds, hsmCreds)
+		if err != nil {
+			log.Error(err, "generating-metadata-for-update")
+			return reconcile.Result{}, err
+		}
+
+		foundSecret.Data = metadataSecret.Data
+
+		err = r.Update(context.TODO(), foundSecret)
+		if err != nil {
+			log.Error(err, "namespace", foundSecret.ObjectMeta.Namespace, "name", foundSecret.ObjectMeta.Name)
+			return reconcile.Result{}, fmt.Errorf("failed to update Secret %s: %s", foundSecret.ObjectMeta.Name, err)
+		}
+
 	}
 
 	metadataLabels := map[string]string{
