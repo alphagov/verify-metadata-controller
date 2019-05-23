@@ -1,0 +1,21 @@
+global:
+  cluster:
+    name:
+    domain:
+
+vmc:
+  image:
+    repository: registry.tools.verify.govsvc.uk/eidas/metadata-controller@sha256
+    tag: a0a0288a908f3180bd4420d7a0676bf7ee0c1b8578375c401393f2c3e0b2c5d0
+    pullPolicy: IfNotPresent
+  secretName: test-vmc
+
+hsm:
+  IP:
+  customerCA:
+  user:
+  password:
+  image:
+    repository: registry.tools.verify.govsvc.uk/eidas/cloudhsm@sha256
+    tag: 0b1adb00b1d65f5dd43449cd12c1f1ccca543455714d3e52bde0972e3bdee3d0
+    pullPolicy: IfNotPresent
