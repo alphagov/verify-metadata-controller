@@ -14,10 +14,10 @@ FROM amazonlinux:2.0.20190212
 
 # Install AWS CloudHSM client and libs
 RUN yum install -y wget tar gzip \
- && wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-latest.el7.x86_64.rpm \
+ && wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-2.0.0-3.el7.x86_64.rpm \
  && yum install -y ./cloudhsm-client-latest.*.rpm \
  && rm ./cloudhsm-client-latest.*.rpm \
- && wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-jce-latest.el7.x86_64.rpm \
+ && wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-jce-2.0.0-3.el7.x86_64.rpm \
  && yum install -y ./cloudhsm-client-jce-latest.*.rpm \
  && rm ./cloudhsm-client-jce-latest.*.rpm \
  && wget https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_linux-x64_bin.tar.gz \
