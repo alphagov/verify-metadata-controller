@@ -124,7 +124,11 @@ public class GenRSA implements Callable<Void> {
 		BigInteger serialNum = new BigInteger(64, new SecureRandom());
 
 		X500NameBuilder subjectGen = new X500NameBuilder(BCStyle.INSTANCE);
-		subjectGen.addRDN(BCStyle.CN, "signing");
+		subjectGen.addRDN(BCStyle.C, "GB");
+		subjectGen.addRDN(BCStyle.L, "London");
+		subjectGen.addRDN(BCStyle.O, "Cabinet Office");
+		subjectGen.addRDN(BCStyle.OU, "GDS");
+		subjectGen.addRDN(BCStyle.CN, "Proxy Node Metadata Signing");
 		X500Name subject = subjectGen.build();
 
 		X509v3CertificateBuilder certGen = new X509v3CertificateBuilder(
