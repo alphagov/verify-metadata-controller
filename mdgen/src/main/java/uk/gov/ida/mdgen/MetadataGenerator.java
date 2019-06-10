@@ -55,6 +55,7 @@ public class MetadataGenerator implements Callable<Void> {
     private final Logger LOG = LoggerFactory.getLogger(MetadataGenerator.class);
     private final Yaml yaml = new Yaml();
     private BasicX509Credential signingCredential;
+    private BasicX509Credential metadataSigningCredential;
     private X509KeyInfoGeneratorFactory keyInfoGeneratorFactory;
 
     enum NodeType { connector, proxy }
@@ -78,8 +79,11 @@ public class MetadataGenerator implements Callable<Void> {
     @CommandLine.Parameters(index = "1", description = "YAML definition file")
     private File yamlFile;
 
-    @CommandLine.Parameters(index = "2", description = "Public X509 cert corresponding to private key")
+    @CommandLine.Parameters(index = "2", description = "Public X509 cert corresponding to private saml signing key")
     private File signingCertFile;
+
+    @CommandLine.Parameters(index = "3", description = "Public X509 cert corresponding to private metadata signing key")
+    private File metadatSigningCertFile;
 
     @CommandLine.Option(names = "--output", description = "Output file")
     private File outputFile;
@@ -99,6 +103,12 @@ public class MetadataGenerator implements Callable<Void> {
     @CommandLine.Option(names = "--hsm-key-label", description = "HSM key label")
     private String hsmKeyLabel = "private_key";
 
+    @CommandLine.Option(names = "--metadata-key-file", description = "Metadata Private key file")
+    private File metadataKeyFile;
+
+    @CommandLine.Option(names = "--metadata-key-pass", description = "Passphrase for encrypted private metadata key")
+    private String metadataKeyPass = "";
+
     public static void main(String[] args) throws InitializationException {
         InitializationService.initialize();
         CommandLine.call(new MetadataGenerator(), args);
@@ -107,6 +117,7 @@ public class MetadataGenerator implements Callable<Void> {
     @Override
     public Void call() throws Exception {
         X509Certificate signingCert = X509Support.decodeCertificate(signingCertFile);
+        X509Certificate metadataSigningCert = X509Support.decodeCertificate(metadatSigningCertFile);
 
         if (signingAlgo == SigningAlgoType.rsapss) {
             Security.addProvider(new BouncyCastleProvider());
@@ -120,6 +131,8 @@ public class MetadataGenerator implements Callable<Void> {
                 signingCredential = getSigningCredentialFromCloudHSM(signingCert);
                 break;
         }
+
+        metadataSigningCredential = getSigningCredentialFromFile(metadataSigningCert, metadataKeyFile, metadataKeyPass);
 
         if (signingCredential.getPublicKey() instanceof ECPublicKey) {
             LOG.warn("Credential public key is of EC type, using ECDSA signing algorithm");
@@ -192,19 +205,19 @@ public class MetadataGenerator implements Callable<Void> {
         LOG.info("Attempting to sign metadata");
         LOG.info("\n  Algorithm: {}\n  Credential: {}\n",
             signingAlgo.uri,
-            signingCredential.getEntityCertificate().getSubjectDN().getName());
+                metadataSigningCredential.getEntityCertificate().getSubjectDN().getName());
 
         SignatureSigningParameters signingParams = new SignatureSigningParameters();
         signingParams.setSignatureAlgorithm(signingAlgo.uri);
         signingParams.setSignatureCanonicalizationAlgorithm(SignatureConstants.ALGO_ID_C14N_EXCL_OMIT_COMMENTS);
-        signingParams.setSigningCredential(signingCredential);
+        signingParams.setSigningCredential(metadataSigningCredential);
         signingParams.setKeyInfoGenerator(keyInfoGeneratorFactory.newInstance());
 
         SignatureSupport.signObject(entityDescriptor, signingParams);
 
         SAMLSignatureProfileValidator signatureProfileValidator = new SAMLSignatureProfileValidator();
         signatureProfileValidator.validate(entityDescriptor.getSignature());
-        SignatureValidator.validate(entityDescriptor.getSignature(), signingCredential);
+        SignatureValidator.validate(entityDescriptor.getSignature(), metadataSigningCredential);
     }
 
     private void updateSsoDescriptor(EntityDescriptor entityDescriptor) throws SecurityException {
