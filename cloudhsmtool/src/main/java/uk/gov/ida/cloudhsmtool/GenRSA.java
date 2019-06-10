@@ -128,7 +128,7 @@ public class GenRSA implements Callable<Void> {
 		subjectGen.addRDN(BCStyle.L, "London");
 		subjectGen.addRDN(BCStyle.O, "Cabinet Office");
 		subjectGen.addRDN(BCStyle.OU, "GDS");
-		subjectGen.addRDN(BCStyle.CN, "Proxy Node Metadata Signing");
+		subjectGen.addRDN(BCStyle.CN, "Proxy Node SAML Signing");
 		X500Name subject = subjectGen.build();
 
 		X509v3CertificateBuilder certGen = new X509v3CertificateBuilder(
