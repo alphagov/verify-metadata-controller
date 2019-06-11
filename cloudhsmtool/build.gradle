@@ -23,7 +23,8 @@ dependencies {
     'com.github.spullara.mustache.java:compiler:0.9.6',
     'org.yaml:snakeyaml:1.24-SNAPSHOT',
     'org.apache.logging.log4j:log4j-api:2.8',
-    'org.apache.logging.log4j:log4j-core:2.8'
+    'org.apache.logging.log4j:log4j-core:2.8', 
+    'com.fasterxml.jackson.core:jackson-databind:2.9.9'
 
     if (project.hasProperty('cloudhsm')) {
       implementation name: 'cloudhsm-2.0.0'
