@@ -53,10 +53,10 @@ func TestReconcile(t *testing.T) {
 	os.Setenv("HSM_CUSTOMER_CA_CERT_PATH", "test.ca.crt")
 
 	// Setup fake hsm client
-	fakeSignedMetadata := []byte("<signed>FAKE-SIGNED-META</signed>")
+	var cloudHSMToolResponse = hsm.CloudHSMToolResponse{"<signed>FAKE-SIGNED-META</signed>", "a CSR"}
 	hsmClient := &hsmfakes.FakeClient{}
-	hsmClient.FindOrCreateRSAKeyPairReturns(metadataSigningCert, nil)
-	hsmClient.GenerateAndSignMetadataReturns(fakeSignedMetadata, nil)
+	hsmClient.FindOrCreateRSAKeyPairReturns(cloudHSMToolResponse, nil)
+	hsmClient.GenerateAndSignMetadataReturns(cloudHSMToolResponse, nil)
 
 	// Setup the Manager and Controller.
 	mgr, err := manager.New(cfg, manager.Options{})
@@ -133,7 +133,7 @@ func TestReconcile(t *testing.T) {
 			return s.Data[key], nil
 		}
 	}
-	g.Eventually(getSecretData("metadata.xml")).Should(Equal(fakeSignedMetadata))
+	g.Eventually(getSecretData("metadata.xml")).Should(Equal(cloudHSMToolResponse.Certificate))
 	g.Eventually(getSecretData("entityID")).Should(Equal([]byte("https://mything/")))
 	g.Eventually(getSecretData("postURL")).Should(Equal([]byte("https://mything/POST")))
 	g.Eventually(getSecretData("redirectURL")).Should(Equal([]byte("https://mything/Redirect")))
@@ -141,6 +141,7 @@ func TestReconcile(t *testing.T) {
 	g.Eventually(getSecretData("hsmPassword")).Should(Equal([]byte("hsm-pass")))
 	g.Eventually(getSecretData("hsmIP")).Should(Equal([]byte("10.0.10.100")))
 	g.Eventually(getSecretData("metadataSigningCert")).Should(Equal(metadataSigningCert))
+	g.Eventually(getSecretData("metadataCSRBase64")).Should(Equal(cloudHSMToolResponse.CertificateSigningRequest))
 	g.Eventually(getSecretData("metadataSigningTruststore")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("metadataSigningKeyLabel")).Should(Equal([]byte("metadata")))
 	g.Eventually(getSecretData("samlSigningCert")).Should(Equal(metadataSigningCert))

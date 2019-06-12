@@ -11,8 +11,13 @@ type Credentials struct {
 	CustomerCA string
 }
 
+type CloudHSMToolResponse struct {
+	Certificate 				string `json:"certificate"`
+	CertificateSigningRequest	string `json:"csr"`
+}
+
 type Client interface {
-	CreateRSAKeyPair(label string, hsmCreds Credentials) (publicCert []byte, err error)
-	FindOrCreateRSAKeyPair(label string, hsmCreds Credentials) (signingCert []byte, err error)
+	CreateRSAKeyPair(label string, hsmCreds Credentials) (response hsm.CloudHSMToolResponse, err error)
+	FindOrCreateRSAKeyPair(label string, hsmCreds Credentials) (response hsm.CloudHSMToolResponse, err error)
 	GenerateAndSignMetadata(metadataSigningCert []byte, metadataSigningKeyLabel string, spec verifyv1beta1.MetadataSpec, hsmCreds Credentials) (signedMetadata []byte, err error)
 }

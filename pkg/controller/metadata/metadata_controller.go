@@ -128,23 +128,23 @@ type ReconcileMetadata struct {
 
 func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.Metadata, metadataCreds hsm.Credentials, namespaceCreds hsm.Credentials) (map[string][]byte, error) {
 	metadataSigningKeyLabel := "metadata"
-	metadataSigningCert, err := r.hsm.FindOrCreateRSAKeyPair(metadataSigningKeyLabel, metadataCreds)
+	cloudHSMToolResponse, err := r.hsm.FindOrCreateRSAKeyPair(metadataSigningKeyLabel, metadataCreds)
 	if err != nil {
 		return nil, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", metadataSigningKeyLabel, err)
 	}
-	metadataSigningTruststore, err := generateTruststore(metadataSigningCert, metadataSigningKeyLabel, truststorePassword)
+	metadataSigningTruststore, err := generateTruststore(cloudHSMToolResponse.Certificate, metadataSigningKeyLabel, truststorePassword)
 	if err != nil {
 		return nil, err
 	}
 
-	signedMetadata, err := r.hsm.GenerateAndSignMetadata(metadataSigningCert, metadataSigningKeyLabel, instance.Spec, metadataCreds)
+	signedMetadata, err := r.hsm.GenerateAndSignMetadata(cloudHSMToolResponse.Certificate, metadataSigningKeyLabel, instance.Spec, metadataCreds)
 	if err != nil {
 		return nil, fmt.Errorf("generateAndSignMetadata(%s): %s", metadataSigningKeyLabel, err)
 	}
 
 	// right now the samlSigning* certs/keys is same as metadataSigning* certs/keys
 	// TODO findOrCreateRSAKeyPair for samlSigningCert using namespaceCreds instead of using metadata keypair
-	samlSigningCert := metadataSigningCert
+	samlSigningCert := cloudHSMToolResponse.Certificate
 	samlSigningKeyLabel := metadataSigningKeyLabel
 	samlSigningTruststore := metadataSigningTruststore
 	samlSigningTruststorePassword := truststorePassword
@@ -163,8 +163,10 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"metadataInternalURL":               []byte(fmt.Sprintf("http://%s/metadata.xml", instance.Name)),
 		"metadataSigningKeyType":            []byte(cloudHSMKeyType),
 		"metadataSigningKeyLabel":           []byte(metadataSigningKeyLabel),
-		"metadataSigningCert":               []byte(metadataSigningCert),
-		"metadataSigningCertBase64":         []byte(base64.StdEncoding.EncodeToString(metadataSigningCert)),
+		"metadataSigningCert":               []byte(cloudHSMToolResponse.Certificate),
+		"metadataSigningCertBase64":         []byte(base64.StdEncoding.EncodeToString(cloudHSMToolResponse.Certificate)),
+		// TODO do we have to base64 encode here?
+		"metadataCSRBase64":         		[]byte(base64.StdEncoding.EncodeToString(cloudHSMToolResponse.CertificateSigningRequest)),
 		"metadataSigningTruststore":         []byte(metadataSigningTruststore),
 		"metadataSigningTruststoreBase64":   []byte(base64.StdEncoding.EncodeToString(metadataSigningTruststore)),
 		"metadataSigningTruststorePassword": []byte(truststorePassword),

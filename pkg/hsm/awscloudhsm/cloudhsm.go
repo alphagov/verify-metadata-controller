@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"encoding/json"
 
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
 	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
@@ -18,7 +19,12 @@ var _ hsm.Client = &Client{}
 
 type Client struct{}
 
-func (c *Client) CreateRSAKeyPair(label string, hsmCreds hsm.Credentials) (publicCert []byte, err error) {
+type CloudHSMToolErrorResponse struct {
+	ErrorMessage	string `json:"error"`
+	Stack	string `json:"stack"`
+}
+
+func (c *Client) CreateRSAKeyPair(label string, hsmCreds hsm.Credentials) (response hsm.CloudHSMToolResponse, err error) {
 	log.Info("cloudhsmtool",
 		"command", "genrsa",
 		"label", label,
@@ -32,17 +38,33 @@ func (c *Client) CreateRSAKeyPair(label string, hsmCreds hsm.Credentials) (publi
 		fmt.Sprintf("HSM_PASSWORD=%s", hsmCreds.Password),
 		fmt.Sprintf("HSM_IP=%s", hsmCreds.IP),
 	)
-	cert, err := cmd.Output()
+	json, errJson := cmd.Output()
+	if errJson != nil {
+		var errorResponse CloudHSMToolErrorResponse
+		err := json.Unmarshal(errJson, &errorResponse)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate rsa key, could not unmarshall error json %s into struct: %s", errJson, err)
+		}
+		return nil, fmt.Errorf(
+			"failed to generate rsa key, error from cloudhsmtool: '%s', java stack\n%s",
+			errorResponse.ErrorMessage,
+			errorResponse.Stack)
+	}
+
+	var res hsm.CloudHSMToolResponse
+	err := json.Unmarshal(json, &response)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate rsa key for %s: %s", label, err)
+		return nil, fmt.Errorf("failed to generate rsa key, could not unmarshall json %s into struct: %s", json, err)
 	}
-	if !strings.Contains(string(cert), "--BEGIN CERTIFICATE--") {
-		return nil, fmt.Errorf("generated %s certificate does not appear to be a valid PEM format: %s", label, cert)
+
+	if !strings.Contains(response.Certificate, "--BEGIN CERTIFICATE--") {
+		return nil, fmt.Errorf("generated %s certificate does not appear to be a valid PEM format: %s", label, response.Certificate)
 	}
-	return cert, nil
+
+	return res, nil
 }
 
-func (c *Client) FindOrCreateRSAKeyPair(label string, hsmCreds hsm.Credentials) (signingCert []byte, err error) {
+func (c *Client) FindOrCreateRSAKeyPair(label string, hsmCreds hsm.Credentials) (response hsm.CloudHSMToolResponse, err error) {
 	return c.CreateRSAKeyPair(label, hsmCreds)
 }
 
