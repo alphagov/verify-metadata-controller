@@ -83,7 +83,7 @@ public class GenRSA implements Callable<Void> {
 			Map<String, String> errorMap = Map.of(
 					"error", e.getMessage(),
 					"stack", sw.toString());
-			System.out.println(new ObjectMapper().writeValueAsString(errorMap));
+			System.err.println(new ObjectMapper().writeValueAsString(errorMap));
 			System.exit(1);
 		}
 
