@@ -55,7 +55,7 @@ func TestReconcile(t *testing.T) {
 	// Setup fake hsm client
 	var cloudHSMToolResponse = hsm.CloudHSMToolResponse{"<signed>FAKE-SIGNED-META</signed>", "a CSR"}
 	hsmClient := &hsmfakes.FakeClient{}
-	hsmClient.FindOrCreateRSAKeyPairReturns(cloudHSMToolResponse, nil)
+	hsmClient.FindOrCreateRSAKeyPairReturns(metadataSigningCert, nil)
 	hsmClient.GenerateAndSignMetadataReturns(cloudHSMToolResponse, nil)
 
 	// Setup the Manager and Controller.
