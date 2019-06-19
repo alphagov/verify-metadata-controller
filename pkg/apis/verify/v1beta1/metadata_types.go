@@ -35,6 +35,16 @@ type MetadataSigningSpec struct {
 	ContactEmail     string `json:"contactEmail,omitempty"`
 }
 
+type CertSpec struct {
+	CAName           string `json:"caCertName"`
+	CountryCode      string `json:"countryCode,omitempty"`
+	CommonName       string `json:"commonName"`
+	ExpiryMonths     int    `json:"expiryMonths,omitempty"`
+	Location         string `json:"location,omitempty"`
+	Organization     string `json:"organization,omitempty"`
+	OrganizationUnit string `json:"organizationUnit"`
+}
+
 // MetadataSpec defines the desired state of Metadata
 // +k8s:openapi-gen=true
 type MetadataSpec struct {
@@ -42,6 +52,7 @@ type MetadataSpec struct {
 	Type    string              `json:"type"`
 	Data    MetadataSigningSpec `json:"data,omitempty"`
 	Enabled bool                `json:"enabled,omitempty"`
+	Cert    CertSpec            `json:"cert"`
 }
 
 // MetadataStatus defines the observed state of Metadata

@@ -104,6 +104,7 @@ func (in *MetadataSigningSpec) DeepCopy() *MetadataSigningSpec {
 func (in *MetadataSpec) DeepCopyInto(out *MetadataSpec) {
 	*out = *in
 	out.Data = in.Data
+	out.Cert = in.Cert
 	return
 }
 

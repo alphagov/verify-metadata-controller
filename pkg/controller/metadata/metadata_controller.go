@@ -126,11 +126,25 @@ type ReconcileMetadata struct {
 	hsm    hsm.Client
 }
 
-func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.Metadata, metadataCreds hsm.Credentials, namespaceCreds hsm.Credentials) (map[string][]byte, error) {
-	metadataSigningKeyLabel := "metadata"
-	metadataSigningCert, err := r.hsm.FindOrCreateRSAKeyPair(metadataSigningKeyLabel, metadataCreds)
+func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.Metadata, metadataCreds hsm.Credentials, namespaceCreds hsm.Credentials, parentCertPEM string, parentCertKeyLabel string) (map[string][]byte, error) {
+	metadataSigningKeyLabel := fmt.Sprintf("%s-%s", instance.ObjectMeta.Namespace, instance.ObjectMeta.Name)
+	_, err := r.hsm.FindOrCreateRSAKeyPair(metadataSigningKeyLabel, metadataCreds)
 	if err != nil {
 		return nil, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", metadataSigningKeyLabel, err)
+	}
+	req := hsm.CertRequest{
+		CountryCode:      instance.Spec.Cert.CountryCode,
+		CommonName:       instance.Spec.Cert.CommonName,
+		ExpiryMonths:     instance.Spec.Cert.ExpiryMonths,
+		Location:         instance.Spec.Cert.Location,
+		Organization:     instance.Spec.Cert.Organization,
+		OrganizationUnit: instance.Spec.Cert.OrganizationUnit,
+		ParentCertPEM:    parentCertPEM,
+		ParentKeyLabel:   parentCertKeyLabel,
+	}
+	metadataSigningCert, err := r.hsm.CreateChainedCert(metadataSigningKeyLabel, metadataCreds, req)
+	if err != nil {
+		return nil, fmt.Errorf("CreateChainedCert(%s): %s", metadataSigningKeyLabel, err)
 	}
 	metadataSigningTruststore, err := generateTruststore(metadataSigningCert, metadataSigningKeyLabel, truststorePassword)
 	if err != nil {
@@ -142,16 +156,29 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		return nil, fmt.Errorf("generateAndSignMetadata(%s): %s", metadataSigningKeyLabel, err)
 	}
 
-	// right now the samlSigning* certs/keys is same as metadataSigning* certs/keys
-	// TODO findOrCreateRSAKeyPair for samlSigningCert using namespaceCreds instead of using metadata keypair
-	samlSigningCert := metadataSigningCert
-	samlSigningKeyLabel := metadataSigningKeyLabel
-	samlSigningTruststore := metadataSigningTruststore
+	// generate samlSigningCert and key
+	samlSigningKeyLabel := fmt.Sprintf("%s-%s-saml", instance.ObjectMeta.Namespace, instance.ObjectMeta.Name)
+	_, err := r.hsm.FindOrCreateRSAKeyPair(samlSigningKeyLabel, metadataCreds)
+	if err != nil {
+		return nil, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", samlSigningKeyLabel, err)
+	}
+	samlSigningCertReq := hsm.CertRequest{
+		CountryCode:      instance.Spec.Cert.CountryCode,
+		CommonName:       instance.Spec.Cert.CommonName,
+		ExpiryMonths:     instance.Spec.Cert.ExpiryMonths,
+		Location:         instance.Spec.Cert.Location,
+		Organization:     instance.Spec.Cert.Organization,
+		OrganizationUnit: instance.Spec.Cert.OrganizationUnit,
+	}
+	metadataSigningCert, err := r.hsm.CreateSelfSignedCert(samlSigningKeyLabel, metadataCreds, samlSigningCertReq)
+	if err != nil {
+		return nil, fmt.Errorf("CreateChainedCert(%s): %s", samlSigningKeyLabel, err)
+	}
+	samlSigningTruststore, err := generateTruststore(samlSigningCert, samlSigningKeyLabel, truststorePassword)
+	if err != nil {
+		return nil, err
+	}
 	samlSigningTruststorePassword := truststorePassword
-
-	// TODO findOrCreateRSAKeyPair for samlEncryptionCert namespaceCreds instead of using metadata keypair
-	// samlEncryptionCert := metadataSigningCert
-	// etc...
 
 	// generate Secret containing generated assets (including signed metadata xml)
 	data := map[string][]byte{
@@ -180,13 +207,6 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"hsmIP":                             []byte(metadataCreds.IP),                       // <-|
 		"hsmCIDR":                           []byte(fmt.Sprintf("%s/32", metadataCreds.IP)), // <-|
 		"hsmCustomerCA.crt":                 []byte(metadataCreds.CustomerCA),               // <-|
-		// "samlEncryptionCert":               samlEncyptionCert,
-		// "samlEncryptionCertBase64":         samlEncyptionCertBase64,
-		// "samlEncryptionTruststoreBase64":   samlEncryptionTruststoreBase64,
-		// "samlEncryptionTruststorePassword": samlEncryptionTruststorePassword,
-		// "samlEncryptionKeyLabel":           samlEncryptionKeyLabel,
-		// "samlEncryptionTruststore":        samlEncryptionTruststore,
-		// .. etc
 	}
 	return data, nil
 }
@@ -259,7 +279,10 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			"name", instance.Name,
 			"version", currentVersion,
 		)
-		metadataSecretData, err := r.generateMetadataSecretData(instance, hsmCreds, hsmCreds) // TODO: use different hsm creds for metadata signing vs generated per-namespace keypairs
+		// lookup parent/ca cert PEM+key-label data based on instance.Spec.Cert.CAName?
+		parentCertPEM := "----?"
+		parentCertKeyLabel := "????"
+		metadataSecretData, err := r.generateMetadataSecretData(instance, hsmCreds, hsmCreds, parentCertPEM, parentCertKeyLabel) // TODO: use different hsm creds for metadata signing vs generated per-namespace keypairs
 		if err != nil {
 			return reconcile.Result{}, err
 		}

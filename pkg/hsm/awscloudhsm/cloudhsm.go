@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
 	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
@@ -18,7 +17,7 @@ var _ hsm.Client = &Client{}
 
 type Client struct{}
 
-func (c *Client) CreateRSAKeyPair(label string, hsmCreds hsm.Credentials) (publicCert []byte, err error) {
+func (c *Client) CreateRSAKeyPair(label string, hsmCreds hsm.Credentials) ([]byte, error) {
 	log.Info("cloudhsmtool",
 		"command", "genrsa",
 		"label", label,
@@ -32,18 +31,76 @@ func (c *Client) CreateRSAKeyPair(label string, hsmCreds hsm.Credentials) (publi
 		fmt.Sprintf("HSM_PASSWORD=%s", hsmCreds.Password),
 		fmt.Sprintf("HSM_IP=%s", hsmCreds.IP),
 	)
-	cert, err := cmd.Output()
+	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate rsa key for %s: %s", label, err)
 	}
-	if !strings.Contains(string(cert), "--BEGIN CERTIFICATE--") {
-		return nil, fmt.Errorf("generated %s certificate does not appear to be a valid PEM format: %s", label, cert)
-	}
-	return cert, nil
+	return out, nil
 }
 
 func (c *Client) FindOrCreateRSAKeyPair(label string, hsmCreds hsm.Credentials) (signingCert []byte, err error) {
 	return c.CreateRSAKeyPair(label, hsmCreds)
+}
+
+func (c *Client) CreateSelfSignedCert(label string, hsmCreds hsm.Credentials, req CertRequest) ([]byte, error) {
+	log.Info("cloudhsmtool",
+		"command", "genrsa",
+		"label", label,
+	)
+	args := []string{
+		"create-self-signed-cert", label,
+		"-C", req.CountryCode,
+		"-CN", req.CommonName,
+		"-expiry", fmt.Sprintf("%d", req.ExpiryMonths),
+		"-L", req.Location,
+		"-O", req.Organization,
+		"-OU", req.OrganizationUnit,
+	}
+	cmd := exec.Command("/cloudhsmtool/build/install/cloudhsmtool/bin/cloudhsmtool", args...)
+	cmd.Stderr = nil // when nil stderr output is captured in err from Output
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("HSM_USER=%s", hsmCreds.User),
+		fmt.Sprintf("HSM_PASSWORD=%s", hsmCreds.Password),
+		fmt.Sprintf("HSM_IP=%s", hsmCreds.IP),
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate rsa key for %s: %s", label, err)
+	}
+	return out, nil
+}
+
+func (c *Client) CreateChainedCert(label string, hsmCreds hsm.Credentials, req CertRequest) ([]byte, error) {
+	log.Info("cloudhsmtool",
+		"command", "genrsa",
+		"label", label,
+	)
+	args := []string{
+		"create-chained-cert", label,
+		"-C", req.CountryCode,
+		"-CN", req.CommonName,
+		"-expiry", fmt.Sprintf("%d", req.ExpiryMonths),
+		"-L", req.Location,
+		"-O", req.Organization,
+		"-OU", req.OrganizationUnit,
+		"-parent-cert-base64", req.ParentCertPEM,
+		"-parent-key-label", req.ParentKeyLabel,
+	}
+	if req.CACert {
+		args = append(args, "-ca-cert")
+	}
+	cmd := exec.Command("/cloudhsmtool/build/install/cloudhsmtool/bin/cloudhsmtool", args...)
+	cmd.Stderr = nil // when nil stderr output is captured in err from Output
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("HSM_USER=%s", hsmCreds.User),
+		fmt.Sprintf("HSM_PASSWORD=%s", hsmCreds.Password),
+		fmt.Sprintf("HSM_IP=%s", hsmCreds.IP),
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate rsa key for %s: %s", label, err)
+	}
+	return out, nil
 }
 
 func (c *Client) GenerateAndSignMetadata(metadataSigningCert []byte, metadataSigningKeyLabel string, spec verifyv1beta1.MetadataSpec, hsmCreds hsm.Credentials) (signedMetadata []byte, err error) {
