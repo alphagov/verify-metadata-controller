@@ -10,9 +10,11 @@ import java.math.BigInteger;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 
-public abstract class HSMCli {
+public  class HSMCli {
 
     public static final BigInteger RSA_PUBLIC_EXPONENT = BigInteger.valueOf(65537);
     public static final String SIGNING_ALGO_SHA256_RSA = "SHA256withRSA";
@@ -33,11 +35,11 @@ public abstract class HSMCli {
         return hsmKeyLabel;
     }
 
-    String toPEMFormat(String header, byte[] encoded) throws IOException {
+    public String toPEMFormat(String header, byte[] encoded) throws IOException, CertificateEncodingException {
         StringWriter buf = new StringWriter();
-        try (PemWriter pemWriter = new PemWriter(buf)) {
-            pemWriter.writeObject(new PemObject(header, encoded));
-            return buf.toString();
-        }
+        PemWriter pemWriter = new PemWriter(buf);
+        pemWriter.writeObject(new PemObject(header, encoded));
+        pemWriter.close();
+        return buf.toString();
     }
 }
