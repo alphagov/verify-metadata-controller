@@ -21,6 +21,8 @@ import java.util.concurrent.Callable;
 
 @CommandLine.Command(subcommands = {
 	GenRSA.class,
+	CreateSelfSignedCertificate.class,
+	CreateChainedCertificate.class,
 })
 public class CloudHSMTool implements Callable<Void> {
 
