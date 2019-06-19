@@ -9,6 +9,21 @@ import (
 )
 
 type FakeClient struct {
+	CreateChainedCertStub        func(string, hsm.Credentials, hsm.CertRequest) ([]byte, error)
+	createChainedCertMutex       sync.RWMutex
+	createChainedCertArgsForCall []struct {
+		arg1 string
+		arg2 hsm.Credentials
+		arg3 hsm.CertRequest
+	}
+	createChainedCertReturns struct {
+		result1 []byte
+		result2 error
+	}
+	createChainedCertReturnsOnCall map[int]struct {
+		result1 []byte
+		result2 error
+	}
 	CreateRSAKeyPairStub        func(string, hsm.Credentials) ([]byte, error)
 	createRSAKeyPairMutex       sync.RWMutex
 	createRSAKeyPairArgsForCall []struct {
@@ -20,6 +35,21 @@ type FakeClient struct {
 		result2 error
 	}
 	createRSAKeyPairReturnsOnCall map[int]struct {
+		result1 []byte
+		result2 error
+	}
+	CreateSelfSignedCertStub        func(string, hsm.Credentials, hsm.CertRequest) ([]byte, error)
+	createSelfSignedCertMutex       sync.RWMutex
+	createSelfSignedCertArgsForCall []struct {
+		arg1 string
+		arg2 hsm.Credentials
+		arg3 hsm.CertRequest
+	}
+	createSelfSignedCertReturns struct {
+		result1 []byte
+		result2 error
+	}
+	createSelfSignedCertReturnsOnCall map[int]struct {
 		result1 []byte
 		result2 error
 	}
@@ -55,6 +85,71 @@ type FakeClient struct {
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
+}
+
+func (fake *FakeClient) CreateChainedCert(arg1 string, arg2 hsm.Credentials, arg3 hsm.CertRequest) ([]byte, error) {
+	fake.createChainedCertMutex.Lock()
+	ret, specificReturn := fake.createChainedCertReturnsOnCall[len(fake.createChainedCertArgsForCall)]
+	fake.createChainedCertArgsForCall = append(fake.createChainedCertArgsForCall, struct {
+		arg1 string
+		arg2 hsm.Credentials
+		arg3 hsm.CertRequest
+	}{arg1, arg2, arg3})
+	fake.recordInvocation("CreateChainedCert", []interface{}{arg1, arg2, arg3})
+	fake.createChainedCertMutex.Unlock()
+	if fake.CreateChainedCertStub != nil {
+		return fake.CreateChainedCertStub(arg1, arg2, arg3)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	fakeReturns := fake.createChainedCertReturns
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *FakeClient) CreateChainedCertCallCount() int {
+	fake.createChainedCertMutex.RLock()
+	defer fake.createChainedCertMutex.RUnlock()
+	return len(fake.createChainedCertArgsForCall)
+}
+
+func (fake *FakeClient) CreateChainedCertCalls(stub func(string, hsm.Credentials, hsm.CertRequest) ([]byte, error)) {
+	fake.createChainedCertMutex.Lock()
+	defer fake.createChainedCertMutex.Unlock()
+	fake.CreateChainedCertStub = stub
+}
+
+func (fake *FakeClient) CreateChainedCertArgsForCall(i int) (string, hsm.Credentials, hsm.CertRequest) {
+	fake.createChainedCertMutex.RLock()
+	defer fake.createChainedCertMutex.RUnlock()
+	argsForCall := fake.createChainedCertArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+}
+
+func (fake *FakeClient) CreateChainedCertReturns(result1 []byte, result2 error) {
+	fake.createChainedCertMutex.Lock()
+	defer fake.createChainedCertMutex.Unlock()
+	fake.CreateChainedCertStub = nil
+	fake.createChainedCertReturns = struct {
+		result1 []byte
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeClient) CreateChainedCertReturnsOnCall(i int, result1 []byte, result2 error) {
+	fake.createChainedCertMutex.Lock()
+	defer fake.createChainedCertMutex.Unlock()
+	fake.CreateChainedCertStub = nil
+	if fake.createChainedCertReturnsOnCall == nil {
+		fake.createChainedCertReturnsOnCall = make(map[int]struct {
+			result1 []byte
+			result2 error
+		})
+	}
+	fake.createChainedCertReturnsOnCall[i] = struct {
+		result1 []byte
+		result2 error
+	}{result1, result2}
 }
 
 func (fake *FakeClient) CreateRSAKeyPair(arg1 string, arg2 hsm.Credentials) ([]byte, error) {
@@ -116,6 +211,71 @@ func (fake *FakeClient) CreateRSAKeyPairReturnsOnCall(i int, result1 []byte, res
 		})
 	}
 	fake.createRSAKeyPairReturnsOnCall[i] = struct {
+		result1 []byte
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeClient) CreateSelfSignedCert(arg1 string, arg2 hsm.Credentials, arg3 hsm.CertRequest) ([]byte, error) {
+	fake.createSelfSignedCertMutex.Lock()
+	ret, specificReturn := fake.createSelfSignedCertReturnsOnCall[len(fake.createSelfSignedCertArgsForCall)]
+	fake.createSelfSignedCertArgsForCall = append(fake.createSelfSignedCertArgsForCall, struct {
+		arg1 string
+		arg2 hsm.Credentials
+		arg3 hsm.CertRequest
+	}{arg1, arg2, arg3})
+	fake.recordInvocation("CreateSelfSignedCert", []interface{}{arg1, arg2, arg3})
+	fake.createSelfSignedCertMutex.Unlock()
+	if fake.CreateSelfSignedCertStub != nil {
+		return fake.CreateSelfSignedCertStub(arg1, arg2, arg3)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	fakeReturns := fake.createSelfSignedCertReturns
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *FakeClient) CreateSelfSignedCertCallCount() int {
+	fake.createSelfSignedCertMutex.RLock()
+	defer fake.createSelfSignedCertMutex.RUnlock()
+	return len(fake.createSelfSignedCertArgsForCall)
+}
+
+func (fake *FakeClient) CreateSelfSignedCertCalls(stub func(string, hsm.Credentials, hsm.CertRequest) ([]byte, error)) {
+	fake.createSelfSignedCertMutex.Lock()
+	defer fake.createSelfSignedCertMutex.Unlock()
+	fake.CreateSelfSignedCertStub = stub
+}
+
+func (fake *FakeClient) CreateSelfSignedCertArgsForCall(i int) (string, hsm.Credentials, hsm.CertRequest) {
+	fake.createSelfSignedCertMutex.RLock()
+	defer fake.createSelfSignedCertMutex.RUnlock()
+	argsForCall := fake.createSelfSignedCertArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+}
+
+func (fake *FakeClient) CreateSelfSignedCertReturns(result1 []byte, result2 error) {
+	fake.createSelfSignedCertMutex.Lock()
+	defer fake.createSelfSignedCertMutex.Unlock()
+	fake.CreateSelfSignedCertStub = nil
+	fake.createSelfSignedCertReturns = struct {
+		result1 []byte
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeClient) CreateSelfSignedCertReturnsOnCall(i int, result1 []byte, result2 error) {
+	fake.createSelfSignedCertMutex.Lock()
+	defer fake.createSelfSignedCertMutex.Unlock()
+	fake.CreateSelfSignedCertStub = nil
+	if fake.createSelfSignedCertReturnsOnCall == nil {
+		fake.createSelfSignedCertReturnsOnCall = make(map[int]struct {
+			result1 []byte
+			result2 error
+		})
+	}
+	fake.createSelfSignedCertReturnsOnCall[i] = struct {
 		result1 []byte
 		result2 error
 	}{result1, result2}
@@ -259,8 +419,12 @@ func (fake *FakeClient) GenerateAndSignMetadataReturnsOnCall(i int, result1 []by
 func (fake *FakeClient) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.createChainedCertMutex.RLock()
+	defer fake.createChainedCertMutex.RUnlock()
 	fake.createRSAKeyPairMutex.RLock()
 	defer fake.createRSAKeyPairMutex.RUnlock()
+	fake.createSelfSignedCertMutex.RLock()
+	defer fake.createSelfSignedCertMutex.RUnlock()
 	fake.findOrCreateRSAKeyPairMutex.RLock()
 	defer fake.findOrCreateRSAKeyPairMutex.RUnlock()
 	fake.generateAndSignMetadataMutex.RLock()

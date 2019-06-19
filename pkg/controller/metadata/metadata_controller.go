@@ -158,7 +158,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 
 	// generate samlSigningCert and key
 	samlSigningKeyLabel := fmt.Sprintf("%s-%s-saml", instance.ObjectMeta.Namespace, instance.ObjectMeta.Name)
-	_, err := r.hsm.FindOrCreateRSAKeyPair(samlSigningKeyLabel, metadataCreds)
+	_, err = r.hsm.FindOrCreateRSAKeyPair(samlSigningKeyLabel, metadataCreds)
 	if err != nil {
 		return nil, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", samlSigningKeyLabel, err)
 	}
@@ -170,7 +170,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		Organization:     instance.Spec.Cert.Organization,
 		OrganizationUnit: instance.Spec.Cert.OrganizationUnit,
 	}
-	metadataSigningCert, err := r.hsm.CreateSelfSignedCert(samlSigningKeyLabel, metadataCreds, samlSigningCertReq)
+	samlSigningCert, err := r.hsm.CreateSelfSignedCert(samlSigningKeyLabel, metadataCreds, samlSigningCertReq)
 	if err != nil {
 		return nil, fmt.Errorf("CreateChainedCert(%s): %s", samlSigningKeyLabel, err)
 	}
@@ -318,7 +318,8 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			"name", foundSecret.Name,
 			"version", foundSecret.ObjectMeta.Annotations[VersionAnnotation],
 		)
-		updatedData, err := r.generateMetadataSecretData(instance, hsmCreds, hsmCreds)
+		// TODO: FIXME: can we stop duplicating this
+		updatedData, err := r.generateMetadataSecretData(instance, hsmCreds, hsmCreds, parentCertPEM, parentCertKeyLabel)
 		if err != nil {
 			return reconcile.Result{}, err
 		}

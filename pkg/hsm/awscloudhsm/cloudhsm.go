@@ -42,7 +42,7 @@ func (c *Client) FindOrCreateRSAKeyPair(label string, hsmCreds hsm.Credentials) 
 	return c.CreateRSAKeyPair(label, hsmCreds)
 }
 
-func (c *Client) CreateSelfSignedCert(label string, hsmCreds hsm.Credentials, req CertRequest) ([]byte, error) {
+func (c *Client) CreateSelfSignedCert(label string, hsmCreds hsm.Credentials, req hsm.CertRequest) ([]byte, error) {
 	log.Info("cloudhsmtool",
 		"command", "genrsa",
 		"label", label,
@@ -70,7 +70,7 @@ func (c *Client) CreateSelfSignedCert(label string, hsmCreds hsm.Credentials, re
 	return out, nil
 }
 
-func (c *Client) CreateChainedCert(label string, hsmCreds hsm.Credentials, req CertRequest) ([]byte, error) {
+func (c *Client) CreateChainedCert(label string, hsmCreds hsm.Credentials, req hsm.CertRequest) ([]byte, error) {
 	log.Info("cloudhsmtool",
 		"command", "genrsa",
 		"label", label,
