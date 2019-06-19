@@ -13,13 +13,16 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager github.com/alph
 FROM amazonlinux:2.0.20190212
 
 # Install AWS CloudHSM client and libs
-RUN yum install -y wget tar gzip \
- && wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-2.0.0-3.el7.x86_64.rpm \
+ENV CLOUDHSM_CLIENT_VERSION=2.0.3-3.el7
+RUN yum install -y wget tar gzip openssl \
+ && wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-${CLOUDHSM_CLIENT_VERSION}.x86_64.rpm \
  && yum install -y ./cloudhsm-client-*.rpm \
  && rm ./cloudhsm-client-*.rpm \
- && wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-jce-2.0.0-3.el7.x86_64.rpm \
+ && wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-jce-${CLOUDHSM_CLIENT_VERSION}.x86_64.rpm \
  && yum install -y ./cloudhsm-client-jce-*.rpm \
  && rm ./cloudhsm-client-jce-*.rpm \
+ && wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-dyn-${CLOUDHSM_CLIENT_VERSION}.x86_64.rpm \
+ && yum install -y ./cloudhsm-client-dyn-*.rpm \
  && wget https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_linux-x64_bin.tar.gz \
  && mkdir -p /usr/lib/jvm \
  && tar -C /usr/lib/jvm -xf ./openjdk-11.0.2*.tar.gz \
@@ -55,11 +58,5 @@ RUN ./gradlew -Pcloudhsm --no-daemon installDist -x test
 # Copy the controller-manager into the image
 WORKDIR /
 COPY --from=builder /go/src/github.com/alphagov/verify-metadata-controller/manager .
-
-# # install openssl dynamic engine tools
-RUN yum install -y openssl \
-	&& wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-dyn-latest.el7.x86_64.rpm \
-	&& yum install -y ./cloudhsm-client-dyn-latest.el7.x86_64.rpm
-
 
 ENTRYPOINT ["/manager"]
