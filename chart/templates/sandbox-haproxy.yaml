@@ -26,6 +26,16 @@ spec:
           mountPath: /usr/local/etc/haproxy/
         ports:
           - containerPort: 2225
+        readinessProbe:
+          tcpSocket:
+            port: 2225
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 2225
+          initialDelaySeconds: 15
+          periodSeconds: 20
       volumes:
       - name: config-volume
         configMap:
