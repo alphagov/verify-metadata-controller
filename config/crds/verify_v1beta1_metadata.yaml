@@ -28,6 +28,28 @@ spec:
           type: object
         spec:
           properties:
+            cert:
+              properties:
+                caCertName:
+                  type: string
+                commonName:
+                  type: string
+                countryCode:
+                  type: string
+                expiryMonths:
+                  format: int64
+                  type: integer
+                location:
+                  type: string
+                organization:
+                  type: string
+                organizationUnit:
+                  type: string
+              required:
+              - caCertName
+              - commonName
+              - organizationUnit
+              type: object
             data:
               properties:
                 contactCompany:
@@ -59,6 +81,7 @@ spec:
               type: string
           required:
           - type
+          - cert
           type: object
         status:
           type: object
