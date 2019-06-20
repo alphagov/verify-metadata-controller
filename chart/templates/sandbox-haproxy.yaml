@@ -10,6 +10,9 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
 spec:
+  selector:
+    matchLabels:
+      app: haproxy
   template:
     metadata:
       labels:
@@ -17,5 +20,40 @@ spec:
     spec:
       containers:
       - name: haproxy
-        image: haproxy:2.0.0
+        image: haproxy:1.9.8
+        volumeMounts:
+        - name: config-volume
+          mountPath: /usr/local/etc/haproxy/
+        ports:
+          - containerPort: 80
+      volumes:
+      - name: config-volume
+        configMap:
+          name: {{ .Release.Name }}-haproxy
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-haproxy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: vmc
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+data:
+  haproxy.cfg: |
+    global
+      daemon
+      maxconn 256
+
+    defaults
+      mode tcp
+      timeout connect 5000ms
+      timeout client 50000ms
+      timeout server 50000ms
+
+    listen tcp-in:
+      bind *:31570
+
 {{ end }}
