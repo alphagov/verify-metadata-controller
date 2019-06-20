@@ -30,6 +30,7 @@ type CertificateRequestSpec struct {
 	Organization         string `json:"organization,omitempty"`
 	OrganizationUnit     string `json:"organizationUnit,omitempty"`
 	ParentCertSecretName string `json:"parentCertSecretName,omitempty"`
+	ParentCertNamespace  string `json:"parentCertNamespace,omitempty"`
 	CACert               bool   `json:"caCert,omitempty"`
 }
 
@@ -41,8 +42,6 @@ type CertificateRequestStatus struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +genclient:nonNamespaced
-
 // CertificateRequest is the Schema for the certificaterequests API
 // +k8s:openapi-gen=true
 type CertificateRequest struct {
@@ -54,8 +53,6 @@ type CertificateRequest struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +genclient:nonNamespaced
-
 // CertificateRequestList contains a list of CertificateRequest
 type CertificateRequestList struct {
 	metav1.TypeMeta `json:",inline"`

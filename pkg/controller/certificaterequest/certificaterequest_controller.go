@@ -19,14 +19,16 @@ package certificaterequest
 import (
 	"context"
 	"fmt"
-
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
 	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -115,5 +117,55 @@ func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reco
 		return reconcile.Result{}, err
 	}
 
-	return reconcile.Result{}, fmt.Errorf("not-imp")
+	keyLabel := instance.ObjectMeta.Name
+	creds, err := hsm.GetCredentials()
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	_, err = r.hsm.FindOrCreateRSAKeyPair(keyLabel, creds)
+	if err != nil {
+		return reconcile.Result{}, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", keyLabel, err)
+	}
+
+	req := hsm.CertRequest{
+		CountryCode:      instance.Spec.CountryCode,
+		CommonName:       instance.Spec.CommonName,
+		ExpiryMonths:     instance.Spec.ExpiryMonths,
+		Location:         instance.Spec.Location,
+		Organization:     instance.Spec.Organization,
+		OrganizationUnit: instance.Spec.OrganizationUnit,
+	}
+	cert, err := r.hsm.CreateSelfSignedCert(keyLabel, creds, req)
+	if err != nil {
+		return reconcile.Result{}, fmt.Errorf("CreateChainedCert(%s): %s", keyLabel, err)
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      instance.Name,
+			Namespace: instance.Namespace,
+		},
+		Type:       corev1.SecretTypeOpaque,
+		StringData: map[string]string{},
+		Data: map[string][]byte{
+			"cert":        cert,
+			"label":       []byte(keyLabel),
+			"hsmUser":     []byte(creds.User),
+			"hsmPassword": []byte(creds.Password),
+			"hsmIP":       []byte(creds.IP),
+		},
+	}
+	if err := controllerutil.SetControllerReference(instance, secret, r.scheme); err != nil {
+		return reconcile.Result{}, err
+	}
+	err = r.Create(context.TODO(), secret)
+	if err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to create Secret %s: %s", secret.Name, err)
+	}
+	log.Info("created-secret",
+		"namespace", secret.Namespace,
+		"name", secret.Name,
+	)
+
+	return reconcile.Result{}, nil
 }

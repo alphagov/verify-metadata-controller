@@ -48,6 +48,7 @@ func TestReconcile(t *testing.T) {
 	os.Setenv("HSM_IP", "10.0.10.100")
 	os.Setenv("HSM_USER", "hsm-user")
 	os.Setenv("HSM_PASSWORD", "hsm-pass")
+	os.Setenv("HSM_CUSTOMER_CA_CERT_PATH", "test.ca.crt")
 
 	// Setup fake hsm client
 	fakePublicKey := []byte("-----BEGIN KEY THING-----")
@@ -70,7 +71,7 @@ func TestReconcile(t *testing.T) {
 
 	// someone adds a cert request for a Root CA...
 	caReq := &verifyv1beta1.CertificateRequest{
-		ObjectMeta: metav1.ObjectMeta{Name: "root"},
+		ObjectMeta: metav1.ObjectMeta{Name: "root", Namespace:"namespace-foo"},
 		Spec: verifyv1beta1.CertificateRequestSpec{
 			CountryCode:      "GB",
 			CommonName:       "CertyMcCertFace",

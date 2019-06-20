@@ -10,7 +10,7 @@ spec:
   names:
     kind: CertificateRequest
     plural: certificaterequests
-  scope: Cluster
+  scope: Namespaced
   validation:
     openAPIV3Schema:
       properties:
@@ -42,6 +42,8 @@ spec:
             organization:
               type: string
             organizationUnit:
+              type: string
+            parentCertNamespace:
               type: string
             parentCertSecretName:
               type: string
