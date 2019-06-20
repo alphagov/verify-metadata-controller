@@ -68,4 +68,17 @@ data:
       acl gds_ips src 213.86.153.212 213.86.153.213 213.86.153.214 213.86.153.235 213.86.153.236 213.86.153.237 85.133.67.244
       tcp-request connection reject if !gds_ips
       server cloudhsm 10.101.29.134:2225 check
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: {{ .Release.Name }}-haproxy
+  namespace: {{ .Release.Namespace }}
+spec:
+  ports:
+    - port: 2225
+      targetPort: 2225
+  selector:
+    matchLabels:
+      app: haproxy
 {{ end }}
