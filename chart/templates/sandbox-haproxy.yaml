@@ -25,7 +25,7 @@ spec:
         - name: config-volume
           mountPath: /usr/local/etc/haproxy/
         ports:
-          - containerPort: 80
+          - containerPort: 2225
       volumes:
       - name: config-volume
         configMap:
@@ -56,11 +56,6 @@ data:
     listen tcp-in:
       acl gds_ips src 213.86.153.212 213.86.153.213 213.86.153.214 213.86.153.235 213.86.153.236 213.86.153.237 85.133.67.244
       tcp-request connection reject if !gds_ips
-      bind *:31570
-      default_backend sandbox_cloud_hsm
-
-    backend sandbox_cloud_hsm:
-      mode tcp
-      option tcplog
-      server cloudhsm 10.101.29.134:2223 check
+      bind *:2225
+      server cloudhsm 10.101.29.134:2225 check
 {{ end }}
