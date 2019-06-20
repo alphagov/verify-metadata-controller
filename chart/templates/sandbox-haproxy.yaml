@@ -54,6 +54,7 @@ data:
       timeout server 50000ms
 
     listen tcp-in:
+      acl gds_ips src 213.86.153.212 213.86.153.213 213.86.153.214 213.86.153.235 213.86.153.236 213.86.153.237 85.133.67.244
+      tcp-request connection reject if !gds_ips
       bind *:31570
-
 {{ end }}
