@@ -41,7 +41,7 @@ func TestReconcile(t *testing.T) {
 	g := NewGomegaWithT(t)
 
 	// Load test certs
-	metadataSigningCert, err := ioutil.ReadFile("test.metadata.signing.crt")
+	fakeCert, err := ioutil.ReadFile("test.metadata.signing.crt")
 	g.Expect(err).NotTo(HaveOccurred())
 	fakeCustomerCA, err := ioutil.ReadFile("test.ca.crt")
 	g.Expect(err).NotTo(HaveOccurred())
@@ -55,8 +55,9 @@ func TestReconcile(t *testing.T) {
 	// Setup fake hsm client
 	fakeSignedMetadata := []byte("<signed>FAKE-SIGNED-META</signed>")
 	hsmClient := &hsmfakes.FakeClient{}
-	hsmClient.FindOrCreateRSAKeyPairReturns(metadataSigningCert, nil)
+	hsmClient.FindOrCreateRSAKeyPairReturns([]byte("----BEGING SAML PUB KEY----"), nil)
 	hsmClient.GenerateAndSignMetadataReturns(fakeSignedMetadata, nil)
+	hsmClient.CreateSelfSignedCertReturns(fakeCert, nil)
 
 	// Setup the Manager and Controller.
 	mgr, err := manager.New(cfg, manager.Options{})
@@ -69,6 +70,26 @@ func TestReconcile(t *testing.T) {
 		close(stopMgr)
 		mgrStopped.Wait()
 	}()
+
+	// create a secret to store dummy parent cert authority
+	fakeCertAuthoritySecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "root",
+			Namespace: "cert-system",
+		},
+		Type:       corev1.SecretTypeOpaque,
+		StringData: map[string]string{},
+		Data: map[string][]byte{
+			"cert":          fakeCert,
+			"label":         []byte("meta-root-label"),
+			"hsmUser":       []byte("meta-root-user"),
+			"hsmPassword":   []byte("meta-root-passw"),
+			"hsmIP":         []byte("10.0.1.99"),
+			"hsmCustomerCA": []byte("meta-root-cutomer-ca"),
+		},
+	}
+	err = c.Create(ctx, fakeCertAuthoritySecret)
+	g.Expect(err).ToNot(HaveOccurred())
 
 	// flesh out a metadata object
 	metadataResource := &verifyv1beta1.Metadata{
@@ -91,6 +112,10 @@ func TestReconcile(t *testing.T) {
 				ContactSurname:   "jefferson",
 				ContactEmail:     "jeff@jeff.com",
 			},
+			CertificateAuthority: verifyv1beta1.CertificateAuthoritySpec{
+				SecretName: "root",
+				Namespace:  "cert-system",
+			},
 		},
 	}
 
@@ -111,7 +136,7 @@ func TestReconcile(t *testing.T) {
 	g.Eventually(reconcileCallCount, timeout).Should(Equal(1))
 	g.Consistently(reconcileCallCount, timeout).Should(Equal(1))
 
-	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called once so far
+	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called once so far to create the SAML signing keypair
 	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(1))
 
 	// We expect a Secret to be created
@@ -140,12 +165,12 @@ func TestReconcile(t *testing.T) {
 	g.Eventually(getSecretData("hsmUser")).Should(Equal([]byte("hsm-user")))
 	g.Eventually(getSecretData("hsmPassword")).Should(Equal([]byte("hsm-pass")))
 	g.Eventually(getSecretData("hsmIP")).Should(Equal([]byte("10.0.10.100")))
-	g.Eventually(getSecretData("metadataSigningCert")).Should(Equal(metadataSigningCert))
+	g.Eventually(getSecretData("metadataSigningCert")).Should(Equal(fakeCert))
 	g.Eventually(getSecretData("metadataSigningTruststore")).ShouldNot(Equal([]byte{}))
-	g.Eventually(getSecretData("metadataSigningKeyLabel")).Should(Equal([]byte("metadata")))
-	g.Eventually(getSecretData("samlSigningCert")).Should(Equal(metadataSigningCert))
+	g.Eventually(getSecretData("metadataSigningKeyLabel")).Should(Equal([]byte("meta-root-label")))
+	g.Eventually(getSecretData("samlSigningCert")).Should(Equal(fakeCert))
 	g.Eventually(getSecretData("samlSigningTruststore")).ShouldNot(Equal([]byte{}))
-	g.Eventually(getSecretData("samlSigningKeyLabel")).Should(Equal([]byte("metadata"))) // FIXME: one day saml key should not be same as metadata key
+	g.Eventually(getSecretData("samlSigningKeyLabel")).Should(Equal([]byte("default-foo-saml")))
 	g.Eventually(getSecretData("hsmCustomerCA.crt")).Should(Equal(fakeCustomerCA))
 	// TODO: add the rest of the Secret fields here...
 

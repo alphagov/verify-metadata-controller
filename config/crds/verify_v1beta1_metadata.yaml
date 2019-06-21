@@ -28,27 +28,15 @@ spec:
           type: object
         spec:
           properties:
-            cert:
+            certificateAuthority:
               properties:
-                caCertName:
+                namespace:
                   type: string
-                commonName:
-                  type: string
-                countryCode:
-                  type: string
-                expiryMonths:
-                  format: int64
-                  type: integer
-                location:
-                  type: string
-                organization:
-                  type: string
-                organizationUnit:
+                secretName:
                   type: string
               required:
-              - caCertName
-              - commonName
-              - organizationUnit
+              - secretName
+              - namespace
               type: object
             data:
               properties:
@@ -77,11 +65,42 @@ spec:
               type: boolean
             id:
               type: string
+            samlSigningCertRequest:
+              properties:
+                caCert:
+                  type: boolean
+                certificateAuthority:
+                  properties:
+                    namespace:
+                      type: string
+                    secretName:
+                      type: string
+                  required:
+                  - secretName
+                  - namespace
+                  type: object
+                commonName:
+                  type: string
+                countryCode:
+                  type: string
+                expiryMonths:
+                  format: int64
+                  type: integer
+                location:
+                  type: string
+                organization:
+                  type: string
+                organizationUnit:
+                  type: string
+              required:
+              - commonName
+              type: object
             type:
               type: string
           required:
           - type
-          - cert
+          - certificateAuthority
+          - samlSigningCertRequest
           type: object
         status:
           type: object

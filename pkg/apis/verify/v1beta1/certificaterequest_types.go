@@ -20,7 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// ParentAuthoritySpec defines the secret where the parent ca cert/key can be found
+// CertificateAuthoritySpec defines the secret where the parent ca cert/key can be found
 // +k8s:openapi-gen=true
 type CertificateAuthoritySpec struct {
 	SecretName string `json:"secretName"`
