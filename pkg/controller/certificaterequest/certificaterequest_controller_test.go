@@ -17,6 +17,7 @@ limitations under the License.
 package certificaterequest
 
 import (
+	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -30,29 +31,31 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 var c client.Client
 
-var expectedRequest = reconcile.Request{NamespacedName: types.NamespacedName{Name: "foo"}}
-var depKey = types.NamespacedName{Name: "foo-deployment", Namespace: "default"}
-
 const timeout = time.Second * 5
 
-func TestReconcile(t *testing.T) {
+func TestReconcileRootCA(t *testing.T) {
 	ctx := context.Background()
 	g := NewGomegaWithT(t)
 
 	// Setup a fake env
-	os.Setenv("HSM_IP", "10.0.10.100")
-	os.Setenv("HSM_USER", "hsm-user")
-	os.Setenv("HSM_PASSWORD", "hsm-pass")
-	os.Setenv("HSM_CUSTOMER_CA_CERT_PATH", "test.ca.crt")
+	HSM_IP := "10.0.10.101"
+	HSM_USER := "hsm-user"
+	HSM_PASSWORD := "hsm-passw"
+	HSM_CUSTOMER_CA_CERT_PATH := "test.ca.crt"
+	HSM_CUSTOMER_CA, err := ioutil.ReadFile(HSM_CUSTOMER_CA_CERT_PATH)
+	g.Expect(err).ToNot(HaveOccurred())
+	os.Setenv("HSM_IP", HSM_IP)
+	os.Setenv("HSM_USER", HSM_USER)
+	os.Setenv("HSM_PASSWORD", HSM_PASSWORD)
+	os.Setenv("HSM_CUSTOMER_CA_CERT_PATH", HSM_CUSTOMER_CA_CERT_PATH)
 
 	// Setup fake hsm client
-	fakePublicKey := []byte("-----BEGIN KEY THING-----")
-	fakeCertData := []byte("-----BEGIN FAKE CERT-----")
+	fakePublicKey := []byte("-----BEGIN FAKE PUB KEY-----")
+	fakeCertData := []byte("-----BEGIN FAKE SELF SIGNED CERT-----")
 	hsmClient := &hsmfakes.FakeClient{}
 	hsmClient.FindOrCreateRSAKeyPairReturns(fakePublicKey, nil)
 	hsmClient.CreateSelfSignedCertReturns(fakeCertData, nil)
@@ -70,8 +73,11 @@ func TestReconcile(t *testing.T) {
 	}()
 
 	// someone adds a cert request for a Root CA...
-	caReq := &verifyv1beta1.CertificateRequest{
-		ObjectMeta: metav1.ObjectMeta{Name: "root", Namespace:"namespace-foo"},
+	req := &verifyv1beta1.CertificateRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "root",
+			Namespace: "foo",
+		},
 		Spec: verifyv1beta1.CertificateRequestSpec{
 			CountryCode:      "GB",
 			CommonName:       "CertyMcCertFace",
@@ -82,52 +88,69 @@ func TestReconcile(t *testing.T) {
 			CACert:           true,
 		},
 	}
-	err = c.Create(ctx, caReq)
+	err = c.Create(ctx, req)
 	g.Expect(err).To(Succeed())
 
 	// The Reconcile function should have been called exactly once
 	g.Eventually(reconcileCallCount, timeout).Should(Equal(1))
 	g.Consistently(reconcileCallCount, timeout).Should(Equal(1))
 
-	// expect: key pair generated for a particular label
-	expectedLabelName := caReq.ObjectMeta.Name
-	g.Eventually(func() string {
-		if hsmClient.FindOrCreateRSAKeyPairCallCount() > 0 {
-			label, _ := hsmClient.FindOrCreateRSAKeyPairArgsForCall(0)
-			return label
-		}
-		return ""
-	}, timeout).Should(Equal(expectedLabelName))
+	// key label should be in the form $NAMESPACE-$NAME
+	expectedLabelName := "foo-root"
+
+	// expect: key pair generated for the label with creds
+	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(1))
+	createKeyLabel, createKeyCreds := hsmClient.FindOrCreateRSAKeyPairArgsForCall(0)
+	g.Expect(createKeyCreds.IP).Should(Equal(HSM_IP))
+	g.Expect(createKeyCreds.User).Should(Equal(HSM_USER))
+	g.Expect(createKeyCreds.Password).Should(Equal(HSM_PASSWORD))
+	g.Expect(createKeyCreds.CustomerCA).Should(Equal(string(HSM_CUSTOMER_CA)))
+	g.Expect(createKeyLabel).Should(Equal(expectedLabelName))
+
+	// expect CreateSelfSignedCert to have been called with the label
+	g.Eventually(hsmClient.CreateSelfSignedCertCallCount, timeout).Should(Equal(1))
+	createCertLabel, createCertCreds, createCertReq := hsmClient.CreateSelfSignedCertArgsForCall(0)
+	g.Expect(createCertLabel).Should(Equal(expectedLabelName))
+	g.Expect(createCertCreds.IP).Should(Equal(HSM_IP))
+	g.Expect(createCertCreds.User).Should(Equal(HSM_USER))
+	g.Expect(createCertCreds.Password).Should(Equal(HSM_PASSWORD))
+	g.Expect(createCertCreds.CustomerCA).Should(Equal(string(HSM_CUSTOMER_CA)))
+	g.Expect(createCertReq.CountryCode).Should(Equal(req.Spec.CountryCode))
+	g.Expect(createCertReq.CommonName).Should(Equal(req.Spec.CommonName))
+	g.Expect(createCertReq.ExpiryMonths).Should(Equal(req.Spec.ExpiryMonths))
+	g.Expect(createCertReq.Location).Should(Equal(req.Spec.Location))
+	g.Expect(createCertReq.Organization).Should(Equal(req.Spec.Organization))
+	g.Expect(createCertReq.OrganizationUnit).Should(Equal(req.Spec.OrganizationUnit))
 
 	// expect a secret to have been created
-	caReqName := types.NamespacedName{
-		Name:      caReq.ObjectMeta.Name,
-		Namespace: caReq.ObjectMeta.Namespace,
+	reqName := types.NamespacedName{
+		Name:      req.ObjectMeta.Name,
+		Namespace: req.ObjectMeta.Namespace,
 	}
 	caSecret := &corev1.Secret{}
 	getSecret := func() error {
-		return c.Get(ctx, caReqName, caSecret)
+		return c.Get(ctx, reqName, caSecret)
 	}
 	g.Eventually(getSecret).Should(Succeed())
+
+	// expect generated secret to have some data
+	g.Expect(caSecret.Data).ToNot(BeNil())
 
 	// expect: certificate placed into a Secret
 	// expect: label in the Secret
 	// expect: hsm creds for the label
-	getSecretData := func(key string) func() ([]byte, error) {
-		return func() ([]byte, error) {
-			s := &corev1.Secret{}
-			if err := c.Get(ctx, caReqName, s); err != nil {
-				return nil, err
-			}
-			return s.Data[key], nil
-		}
-	}
-	g.Eventually(getSecretData("cert")).Should(Equal(fakeCertData))
-	g.Eventually(getSecretData("label")).Should(Equal([]byte(expectedLabelName)))
-	g.Eventually(getSecretData("hsmUser")).Should(Equal([]byte("hsm-user")))
-	g.Eventually(getSecretData("hsmPassword")).Should(Equal([]byte("hsm-pass")))
-	g.Eventually(getSecretData("hsmIP")).Should(Equal([]byte("10.0.10.100")))
+	g.Expect(caSecret.Data["cert"]).To(Equal(fakeCertData))
+	g.Expect(caSecret.Data["label"]).To(Equal([]byte(expectedLabelName)))
+	g.Expect(caSecret.Data["hsmIP"]).To(Equal([]byte(HSM_IP)))
+	g.Expect(caSecret.Data["hsmUser"]).To(Equal([]byte(HSM_USER)))
+	g.Expect(caSecret.Data["hsmPassword"]).To(Equal([]byte(HSM_PASSWORD)))
+	g.Expect(caSecret.Data["hsmCustomerCA"]).To(Equal([]byte(HSM_CUSTOMER_CA)))
 
-	// .. then same again with a parent
+	// update should not error
+	err = c.Update(ctx, req)
+	g.Expect(err).To(Succeed())
 
+	// delete should not error
+	err = c.Delete(ctx, req)
+	g.Expect(err).To(Succeed())
 }

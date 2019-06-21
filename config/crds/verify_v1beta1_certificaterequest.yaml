@@ -30,6 +30,13 @@ spec:
           properties:
             caCert:
               type: boolean
+            certificateAuthority:
+              properties:
+                namespace:
+                  type: string
+                secretName:
+                  type: string
+              type: object
             commonName:
               type: string
             countryCode:
@@ -42,10 +49,6 @@ spec:
             organization:
               type: string
             organizationUnit:
-              type: string
-            parentCertNamespace:
-              type: string
-            parentCertSecretName:
               type: string
           required:
           - commonName

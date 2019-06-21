@@ -27,11 +27,13 @@ import (
 
 func TestStorageCertificateRequest(t *testing.T) {
 	key := types.NamespacedName{
-		Name: "foo",
+		Name:      "foo",
+		Namespace: "bar",
 	}
 	created := &CertificateRequest{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "foo",
+			Name:      "foo",
+			Namespace: "bar",
 		}}
 	g := gomega.NewGomegaWithT(t)
 

@@ -4,7 +4,7 @@ IMG ?= metadata-controller:latest
 
 default: manager
 
-all: test manager
+all: manifests test manager
 
 # Run tests
 test: generate fmt vet manifests

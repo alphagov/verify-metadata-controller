@@ -19,13 +19,14 @@ package certificaterequest
 import (
 	"context"
 	"fmt"
+
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
 	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -72,16 +73,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// TODO(user): Modify this to be the types you create
-	// Uncomment watch a Deployment created by CertificateRequest - change this for objects you create
-	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &verifyv1beta1.CertificateRequest{},
-	})
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -96,17 +87,15 @@ type ReconcileCertificateRequest struct {
 
 // Reconcile reads that state of the cluster for a CertificateRequest object and makes changes based on the state read
 // and what is in the CertificateRequest.Spec
-// TODO(user): Modify this Reconcile function to implement your Controller logic.  The scaffolding writes
 // a Deployment as an example
 // Automatically generate RBAC rules to allow the Controller to read and write Deployments
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=verify.gov.uk,resources=certificaterequests,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=verify.gov.uk,resources=certificaterequests/status,verbs=get;update;patch
 func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+	ctx := context.Background()
 	// Fetch the CertificateRequest instance
 	instance := &verifyv1beta1.CertificateRequest{}
-	err := r.Get(context.TODO(), request.NamespacedName, instance)
+	err := r.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
@@ -117,55 +106,67 @@ func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reco
 		return reconcile.Result{}, err
 	}
 
-	keyLabel := instance.ObjectMeta.Name
+	keyLabel := fmt.Sprintf("%s-%s", instance.ObjectMeta.Namespace, instance.ObjectMeta.Name)
+
 	creds, err := hsm.GetCredentials()
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	_, err = r.hsm.FindOrCreateRSAKeyPair(keyLabel, creds)
-	if err != nil {
-		return reconcile.Result{}, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", keyLabel, err)
-	}
 
-	req := hsm.CertRequest{
-		CountryCode:      instance.Spec.CountryCode,
-		CommonName:       instance.Spec.CommonName,
-		ExpiryMonths:     instance.Spec.ExpiryMonths,
-		Location:         instance.Spec.Location,
-		Organization:     instance.Spec.Organization,
-		OrganizationUnit: instance.Spec.OrganizationUnit,
-	}
-	cert, err := r.hsm.CreateSelfSignedCert(keyLabel, creds, req)
-	if err != nil {
-		return reconcile.Result{}, fmt.Errorf("CreateChainedCert(%s): %s", keyLabel, err)
-	}
+	// find or create certifcate Secret
+	foundSecret := &corev1.Secret{}
+	err = r.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, foundSecret)
+	if err != nil && errors.IsNotFound(err) {
+		_, err = r.hsm.FindOrCreateRSAKeyPair(keyLabel, creds)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", keyLabel, err)
+		}
 
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
-		},
-		Type:       corev1.SecretTypeOpaque,
-		StringData: map[string]string{},
-		Data: map[string][]byte{
-			"cert":        cert,
-			"label":       []byte(keyLabel),
-			"hsmUser":     []byte(creds.User),
-			"hsmPassword": []byte(creds.Password),
-			"hsmIP":       []byte(creds.IP),
-		},
-	}
-	if err := controllerutil.SetControllerReference(instance, secret, r.scheme); err != nil {
+		req := hsm.CertRequest{
+			CountryCode:      instance.Spec.CountryCode,
+			CommonName:       instance.Spec.CommonName,
+			ExpiryMonths:     instance.Spec.ExpiryMonths,
+			Location:         instance.Spec.Location,
+			Organization:     instance.Spec.Organization,
+			OrganizationUnit: instance.Spec.OrganizationUnit,
+		}
+		cert, err := r.hsm.CreateSelfSignedCert(keyLabel, creds, req)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("CreateChainedCert(%s): %s", keyLabel, err)
+		}
+
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      instance.Name,
+				Namespace: instance.Namespace,
+			},
+			Type:       corev1.SecretTypeOpaque,
+			StringData: map[string]string{},
+			Data: map[string][]byte{
+				"cert":          cert,
+				"label":         []byte(keyLabel),
+				"hsmUser":       []byte(creds.User),
+				"hsmPassword":   []byte(creds.Password),
+				"hsmIP":         []byte(creds.IP),
+				"hsmCustomerCA": []byte(creds.CustomerCA),
+			},
+		}
+		if err := controllerutil.SetControllerReference(instance, secret, r.scheme); err != nil {
+			return reconcile.Result{}, err
+		}
+		err = r.Create(context.TODO(), secret)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to create Secret %s: %s", secret.Name, err)
+		}
+		log.Info("created-certificate-secret",
+			"namespace", secret.Namespace,
+			"name", secret.Name,
+		)
+	} else if err != nil {
 		return reconcile.Result{}, err
+	} else {
+		// alredy exists, update?
 	}
-	err = r.Create(context.TODO(), secret)
-	if err != nil {
-		return reconcile.Result{}, fmt.Errorf("failed to create Secret %s: %s", secret.Name, err)
-	}
-	log.Info("created-secret",
-		"namespace", secret.Namespace,
-		"name", secret.Name,
-	)
 
 	return reconcile.Result{}, nil
 }

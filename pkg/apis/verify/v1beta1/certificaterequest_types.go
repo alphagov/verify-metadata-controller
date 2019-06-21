@@ -20,18 +20,24 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ParentAuthoritySpec defines the secret where the parent ca cert/key can be found
+// +k8s:openapi-gen=true
+type CertificateAuthoritySpec struct {
+	SecretName string `json:"secretName,omitempty"`
+	Namespace  string `json:"namespace,omitempty"`
+}
+
 // CertificateRequestSpec defines the desired state of CertificateRequest
 // +k8s:openapi-gen=true
 type CertificateRequestSpec struct {
-	CountryCode          string `json:"countryCode,omitempty"`
-	CommonName           string `json:"commonName"`
-	ExpiryMonths         int    `json:"expiryMonths,omitempty"`
-	Location             string `json:"location,omitempty"`
-	Organization         string `json:"organization,omitempty"`
-	OrganizationUnit     string `json:"organizationUnit,omitempty"`
-	ParentCertSecretName string `json:"parentCertSecretName,omitempty"`
-	ParentCertNamespace  string `json:"parentCertNamespace,omitempty"`
-	CACert               bool   `json:"caCert,omitempty"`
+	CountryCode          string                    `json:"countryCode,omitempty"`
+	CommonName           string                    `json:"commonName"`
+	ExpiryMonths         int                       `json:"expiryMonths,omitempty"`
+	Location             string                    `json:"location,omitempty"`
+	Organization         string                    `json:"organization,omitempty"`
+	OrganizationUnit     string                    `json:"organizationUnit,omitempty"`
+	CACert               bool                      `json:"caCert,omitempty"`
+	CertificateAuthority *CertificateAuthoritySpec `json:"certificateAuthority,omitempty"`
 }
 
 // CertificateRequestStatus defines the observed state of CertificateRequest

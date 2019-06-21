@@ -211,27 +211,6 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 	return data, nil
 }
 
-func (r *ReconcileMetadata) getCredentials() (hsm.Credentials, error) {
-	hsmCustomerCACertPath := os.Getenv("HSM_CUSTOMER_CA_CERT_PATH")
-	if hsmCustomerCACertPath == "" {
-		hsmCustomerCACertPath = DefaultCustomerCACertPath
-	}
-	hsmCustomerCA, err := ioutil.ReadFile(hsmCustomerCACertPath)
-	if err != nil {
-		return hsm.Credentials{}, fmt.Errorf("failed to read %s: %s", hsmCustomerCACertPath, err)
-	}
-	if len(hsmCustomerCA) == 0 {
-		return hsm.Credentials{}, fmt.Errorf("%s certificate was zero bytes", hsmCustomerCACertPath)
-	}
-	hsmCreds := hsm.Credentials{
-		IP:         os.Getenv("HSM_IP"),
-		User:       os.Getenv("HSM_USER"),
-		Password:   os.Getenv("HSM_PASSWORD"),
-		CustomerCA: string(hsmCustomerCA),
-	}
-	return hsmCreds, nil
-}
-
 // Reconcile reads that state of the cluster for a Metadata object and makes changes based on the state read
 // and what is in the Metadata.Spec
 // Automatically generate RBAC rules to allow the Controller to read and write Deployments
@@ -258,7 +237,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	}
 
 	// Grab the VMC's HSM creds
-	hsmCreds, err := r.getCredentials()
+	hsmCreds, err := hsm.GetCredentials()
 	if err != nil {
 		return reconcile.Result{}, err
 	}
