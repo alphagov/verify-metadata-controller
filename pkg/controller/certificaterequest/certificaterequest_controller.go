@@ -96,21 +96,22 @@ func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reco
 	// Fetch the CertificateRequest instance
 	instance := &verifyv1beta1.CertificateRequest{}
 	err := r.Get(ctx, request.NamespacedName, instance)
+	reconcileResult := reconcile.Result{}
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
 			// For additional cleanup logic use finalizers.
-			return reconcile.Result{}, nil
+			return reconcileResult, nil
 		}
 		// Error reading the object - requeue the request.
-		return reconcile.Result{}, err
+		return reconcileResult, err
 	}
 
 	keyLabel := fmt.Sprintf("%s-%s", instance.ObjectMeta.Namespace, instance.ObjectMeta.Name)
 
 	creds, err := hsm.GetCredentials()
 	if err != nil {
-		return reconcile.Result{}, err
+		return reconcileResult, err
 	}
 
 	// find or create certifcate Secret
@@ -119,7 +120,7 @@ func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reco
 	if err != nil && errors.IsNotFound(err) {
 		_, err = r.hsm.FindOrCreateRSAKeyPair(keyLabel, creds)
 		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", keyLabel, err)
+			return reconcileResult, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", keyLabel, err)
 		}
 
 		req := hsm.CertRequest{
@@ -132,41 +133,53 @@ func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reco
 		}
 		cert, err := r.hsm.CreateSelfSignedCert(keyLabel, creds, req)
 		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("CreateChainedCert(%s): %s", keyLabel, err)
+			return reconcileResult, fmt.Errorf("CreateChainedCert(%s): %s", keyLabel, err)
 		}
 
-		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      instance.Name,
-				Namespace: instance.Namespace,
-			},
-			Type:       corev1.SecretTypeOpaque,
-			StringData: map[string]string{},
-			Data: map[string][]byte{
-				"cert":          cert,
-				"label":         []byte(keyLabel),
-				"hsmUser":       []byte(creds.User),
-				"hsmPassword":   []byte(creds.Password),
-				"hsmIP":         []byte(creds.IP),
-				"hsmCustomerCA": []byte(creds.CustomerCA),
-			},
+		if err := r.saveSecret(instance, cert, keyLabel, creds); err != nil {
+			return reconcileResult, err
 		}
-		if err := controllerutil.SetControllerReference(instance, secret, r.scheme); err != nil {
-			return reconcile.Result{}, err
-		}
-		err = r.Create(context.TODO(), secret)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to create Secret %s: %s", secret.Name, err)
-		}
-		log.Info("created-certificate-secret",
-			"namespace", secret.Namespace,
-			"name", secret.Name,
-		)
+
 	} else if err != nil {
-		return reconcile.Result{}, err
+		return reconcileResult, err
 	} else {
 		// alredy exists, update?
 	}
 
-	return reconcile.Result{}, nil
+	return reconcileResult, nil
+}
+
+func (r *ReconcileCertificateRequest) saveSecret(instance *verifyv1beta1.CertificateRequest, cert []byte, keyLabel string, creds hsm.Credentials) error {
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      instance.Name,
+			Namespace: instance.Namespace,
+		},
+		Type:       corev1.SecretTypeOpaque,
+		StringData: map[string]string{},
+		Data: map[string][]byte{
+			"cert":          cert,
+			"label":         []byte(keyLabel),
+			"hsmUser":       []byte(creds.User),
+			"hsmPassword":   []byte(creds.Password),
+			"hsmIP":         []byte(creds.IP),
+			"hsmCustomerCA": []byte(creds.CustomerCA),
+		},
+	}
+
+	if err := controllerutil.SetControllerReference(instance, secret, r.scheme); err != nil {
+		return err
+	}
+
+	if err := r.Create(context.TODO(), secret); err != nil {
+		return err
+	}
+
+	log.Info("created-certificate-secret",
+		"namespace", secret.Namespace,
+		"name", secret.Name,
+	)
+
+	return nil
 }
