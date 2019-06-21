@@ -5,8 +5,6 @@ metadata:
   labels:
     controller-tools.k8s.io: "1.0"
   name: metadata.verify.gov.uk
-  annotations:
-    "helm.sh/hook": crd-install
 spec:
   group: verify.gov.uk
   names:
@@ -30,10 +28,79 @@ spec:
           type: object
         spec:
           properties:
+            certificateAuthority:
+              properties:
+                namespace:
+                  type: string
+                secretName:
+                  type: string
+              required:
+              - secretName
+              - namespace
+              type: object
+            data:
+              properties:
+                contactCompany:
+                  type: string
+                contactEmail:
+                  type: string
+                contactGivenName:
+                  type: string
+                contactSurname:
+                  type: string
+                entityID:
+                  type: string
+                orgDisplayName:
+                  type: string
+                orgName:
+                  type: string
+                orgURL:
+                  type: string
+                postURL:
+                  type: string
+                redirectURL:
+                  type: string
+              type: object
             enabled:
               type: boolean
             id:
               type: string
+            samlSigningCertRequest:
+              properties:
+                caCert:
+                  type: boolean
+                certificateAuthority:
+                  properties:
+                    namespace:
+                      type: string
+                    secretName:
+                      type: string
+                  required:
+                  - secretName
+                  - namespace
+                  type: object
+                commonName:
+                  type: string
+                countryCode:
+                  type: string
+                expiryMonths:
+                  format: int64
+                  type: integer
+                location:
+                  type: string
+                organization:
+                  type: string
+                organizationUnit:
+                  type: string
+              required:
+              - commonName
+              type: object
+            type:
+              type: string
+          required:
+          - type
+          - certificateAuthority
+          - samlSigningCertRequest
           type: object
         status:
           type: object
