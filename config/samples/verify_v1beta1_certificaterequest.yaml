@@ -3,7 +3,13 @@ kind: CertificateRequest
 metadata:
   labels:
     controller-tools.k8s.io: "1.0"
-  name: certificaterequest-sample
+  name: example-root-ca
+  namespace: default
 spec:
-  # Add fields here
-  foo: bar
+  countryCode: GB
+  commonName: ExampleCA
+  expiryMonths: 120
+  organization: WidgetCo
+  organizationUnit: Tech
+  CACert: true
+

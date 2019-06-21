@@ -4,8 +4,10 @@ metadata:
   labels:
     controller-tools.k8s.io: "1.0"
   name: example-metadata
+  namespace: default
 spec:
   id: _entities
+  type: proxy
   data:
     entityID: https://test-proxy-node.staging.verify.govsvc.uk
     postURL: https://test-proxy-node.staging.verify.govsvc.uk/SSO/Post
@@ -18,3 +20,12 @@ spec:
     contactSurname: jefferson
     contactEmail: jeff@example.local
   enabled: true
+  samlSigningCertRequest:
+    countryCode: GB
+    commonName: ExampleSelfSignedSigningCert
+    expiryMonths: 120
+    organization: WidgetCo
+    organizationUnit: Tech
+  certificateAuthority:
+    secretName: example-root-ca
+    namespace: default
