@@ -123,6 +123,8 @@ func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reco
 			return reconcileResult, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", keyLabel, err)
 		}
 
+
+
 		req := hsm.CertRequest{
 			CountryCode:      instance.Spec.CountryCode,
 			CommonName:       instance.Spec.CommonName,
@@ -131,7 +133,40 @@ func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reco
 			Organization:     instance.Spec.Organization,
 			OrganizationUnit: instance.Spec.OrganizationUnit,
 		}
-		cert, err := r.hsm.CreateSelfSignedCert(keyLabel, creds, req)
+
+		// the hsm fn to call
+		createCertFn := r.hsm.CreateSelfSignedCert
+
+		if instance.Spec.CertificateAuthority != nil {
+
+			reqName := types.NamespacedName{
+				Name:      instance.Spec.CertificateAuthority.SecretName,
+				Namespace: instance.Spec.CertificateAuthority.Namespace,
+			}
+
+			// get the cert and label saved as a secret
+			caSecret := &corev1.Secret{}
+			if err := r.Get(context.TODO(), reqName, caSecret); err != nil {
+				return reconcileResult, err
+			}
+
+			if val, ok := caSecret.Data["cert"]; ok {
+				req.ParentCertPEM = string(val)
+			} else {
+				return reconcileResult, fmt.Errorf("could not find 'cert' value in secret")
+			}
+
+			if val, ok := caSecret.Data["label"]; ok {
+				req.ParentKeyLabel = string(val)
+			} else {
+				return reconcileResult, fmt.Errorf("could not find 'label' value in secret")
+			}
+
+			createCertFn = r.hsm.CreateChainedCert
+		}
+
+		cert, err := createCertFn(keyLabel, creds, req)
+
 		if err != nil {
 			return reconcileResult, fmt.Errorf("CreateChainedCert(%s): %s", keyLabel, err)
 		}

@@ -263,8 +263,8 @@ func TestReconcileIntermediateCA(t *testing.T) {
 	g.Expect(createCertReq.Location).Should(Equal(req.Spec.Location))
 	g.Expect(createCertReq.Organization).Should(Equal(req.Spec.Organization))
 	g.Expect(createCertReq.OrganizationUnit).Should(Equal(req.Spec.OrganizationUnit))
-	g.Expect(createCertReq.ParentCertPEM).Should(Equal(fakeCertAuthoritySecret.Data["cert"]))
-	g.Expect(createCertReq.ParentKeyLabel).Should(Equal(fakeCertAuthoritySecret.Data["label"]))
+	g.Expect(createCertReq.ParentCertPEM).Should(Equal(string(fakeCertAuthoritySecret.Data["cert"])))
+	g.Expect(createCertReq.ParentKeyLabel).Should(Equal(string(fakeCertAuthoritySecret.Data["label"])))
 
 	// expect a secret to have been created
 	reqName := types.NamespacedName{
