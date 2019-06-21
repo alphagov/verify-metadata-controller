@@ -23,8 +23,8 @@ import (
 // ParentAuthoritySpec defines the secret where the parent ca cert/key can be found
 // +k8s:openapi-gen=true
 type CertificateAuthoritySpec struct {
-	SecretName string `json:"secretName,omitempty"`
-	Namespace  string `json:"namespace,omitempty"`
+	SecretName string `json:"secretName"`
+	Namespace  string `json:"namespace"`
 }
 
 // CertificateRequestSpec defines the desired state of CertificateRequest

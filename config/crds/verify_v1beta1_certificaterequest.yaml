@@ -36,6 +36,9 @@ spec:
                   type: string
                 secretName:
                   type: string
+              required:
+              - secretName
+              - namespace
               type: object
             commonName:
               type: string
