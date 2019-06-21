@@ -62,6 +62,7 @@ public class CreateSelfSignedCertificate extends HSMCli implements Callable<Void
             System.exit(1);
         }
 
+        ks.load(null, null);
         Key privateKey = ks.getKey(hsmKeyLabel, null);
         if (!(privateKey instanceof PrivateKey)) {
             throw new Exception("failed to fetch PrivateKey for " + hsmKeyLabel);
