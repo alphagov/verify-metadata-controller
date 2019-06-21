@@ -123,8 +123,6 @@ func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reco
 			return reconcileResult, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", keyLabel, err)
 		}
 
-
-
 		req := hsm.CertRequest{
 			CountryCode:      instance.Spec.CountryCode,
 			CommonName:       instance.Spec.CommonName,
