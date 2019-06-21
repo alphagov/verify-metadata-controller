@@ -27,5 +27,5 @@ spec:
     organization: WidgetCo
     organizationUnit: Tech
   certificateAuthority:
-    secretName: example-root-ca
+    secretName: example-int-ca
     namespace: default

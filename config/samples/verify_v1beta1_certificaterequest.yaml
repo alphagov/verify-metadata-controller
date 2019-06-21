@@ -1,3 +1,4 @@
+---
 apiVersion: verify.gov.uk/v1beta1
 kind: CertificateRequest
 metadata:
@@ -12,4 +13,22 @@ spec:
   organization: WidgetCo
   organizationUnit: Tech
   CACert: true
+---
+apiVersion: verify.gov.uk/v1beta1
+kind: CertificateRequest
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: example-int-ca
+  namespace: default
+spec:
+  countryCode: GB
+  commonName: ExampleCA
+  expiryMonths: 120
+  organization: WidgetCo
+  organizationUnit: Tech
+  CACert: true
+  certificateAuthority:
+    secretName: example-root-ca
+    namespace: default
 
