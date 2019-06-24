@@ -126,32 +126,77 @@ type ReconcileMetadata struct {
 	hsm    hsm.Client
 }
 
-func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.Metadata, metadataCreds hsm.Credentials, namespaceCreds hsm.Credentials) (map[string][]byte, error) {
-	metadataSigningKeyLabel := "metadata"
-	metadataSigningCert, err := r.hsm.FindOrCreateRSAKeyPair(metadataSigningKeyLabel, metadataCreds)
-	if err != nil {
-		return nil, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", metadataSigningKeyLabel, err)
+func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.Metadata, caSecret *corev1.Secret) (map[string][]byte, error) {
+	if caSecret == nil {
+		return nil, fmt.Errorf("caSecret is required")
 	}
-	metadataSigningTruststore, err := generateTruststore(metadataSigningCert, metadataSigningKeyLabel, truststorePassword)
+	metadataHSMUser := caSecret.Data["hsmUser"]
+	if metadataHSMUser == nil {
+		return nil, fmt.Errorf("no 'hsmUser' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+	}
+	metadataHSMPassword := caSecret.Data["hsmPassword"]
+	if metadataHSMPassword == nil {
+		return nil, fmt.Errorf("no 'hsmPassword' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+	}
+	metadataHSMIP := caSecret.Data["hsmPassword"]
+	if metadataHSMIP == nil {
+		return nil, fmt.Errorf("no 'hsmIP' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+	}
+	metadataHSMCustomerCA := caSecret.Data["hsmCustomerCA"]
+	if metadataHSMCustomerCA == nil {
+		return nil, fmt.Errorf("no 'hsmIP' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+	}
+	metadataHSMCreds := hsm.Credentials{
+		IP:         string(metadataHSMIP),
+		User:       string(metadataHSMUser),
+		Password:   string(metadataHSMPassword),
+		CustomerCA: string(metadataHSMCustomerCA),
+	}
+	metadataSigningCert := caSecret.Data["cert"]
+	if metadataSigningCert == nil {
+		return nil, fmt.Errorf("no 'cert' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+	}
+	metadataSigningKeyLabel := caSecret.Data["label"]
+	if metadataSigningKeyLabel == nil {
+		return nil, fmt.Errorf("no 'label' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+	}
+	metadataSigningTruststore, err := generateTruststore(metadataSigningCert, string(metadataSigningKeyLabel), truststorePassword)
 	if err != nil {
 		return nil, err
 	}
 
-	signedMetadata, err := r.hsm.GenerateAndSignMetadata(metadataSigningCert, metadataSigningKeyLabel, instance.Spec, metadataCreds)
+	signedMetadata, err := r.hsm.GenerateAndSignMetadata(metadataSigningCert, string(metadataSigningKeyLabel), instance.Spec, metadataHSMCreds)
 	if err != nil {
 		return nil, fmt.Errorf("generateAndSignMetadata(%s): %s", metadataSigningKeyLabel, err)
 	}
 
-	// right now the samlSigning* certs/keys is same as metadataSigning* certs/keys
-	// TODO findOrCreateRSAKeyPair for samlSigningCert using namespaceCreds instead of using metadata keypair
-	samlSigningCert := metadataSigningCert
-	samlSigningKeyLabel := metadataSigningKeyLabel
-	samlSigningTruststore := metadataSigningTruststore
+	// generate samlSigningCert and key
+	samlSigningCreds, err := hsm.GetCredentials()
+	if err != nil {
+		return nil, err
+	}
+	samlSigningKeyLabel := fmt.Sprintf("%s-%s-saml", instance.ObjectMeta.Namespace, instance.ObjectMeta.Name)
+	_, err = r.hsm.FindOrCreateRSAKeyPair(samlSigningKeyLabel, samlSigningCreds)
+	if err != nil {
+		return nil, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", samlSigningKeyLabel, err)
+	}
+	samlSigningCertReq := hsm.CertRequest{
+		CountryCode:      instance.Spec.SAMLSigningCertificate.CountryCode,
+		CommonName:       instance.Spec.SAMLSigningCertificate.CommonName,
+		ExpiryMonths:     instance.Spec.SAMLSigningCertificate.ExpiryMonths,
+		Location:         instance.Spec.SAMLSigningCertificate.Location,
+		Organization:     instance.Spec.SAMLSigningCertificate.Organization,
+		OrganizationUnit: instance.Spec.SAMLSigningCertificate.OrganizationUnit,
+	}
+	samlSigningCert, err := r.hsm.CreateSelfSignedCert(samlSigningKeyLabel, samlSigningCreds, samlSigningCertReq)
+	if err != nil {
+		return nil, fmt.Errorf("CreateChainedCert(%s): %s", samlSigningKeyLabel, err)
+	}
+	samlSigningTruststore, err := generateTruststore(samlSigningCert, samlSigningKeyLabel, truststorePassword)
+	if err != nil {
+		return nil, err
+	}
 	samlSigningTruststorePassword := truststorePassword
-
-	// TODO findOrCreateRSAKeyPair for samlEncryptionCert namespaceCreds instead of using metadata keypair
-	// samlEncryptionCert := metadataSigningCert
-	// etc...
 
 	// generate Secret containing generated assets (including signed metadata xml)
 	data := map[string][]byte{
@@ -175,41 +220,13 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"samlSigningTruststorePassword":     []byte(samlSigningTruststorePassword),
 		"samlSigningKeyType":                []byte(cloudHSMKeyType),
 		"samlSigningKeyLabel":               []byte(samlSigningKeyLabel),
-		"hsmUser":                           []byte(metadataCreds.User),                     // <-| TODO: these should be namespaceCreds
-		"hsmPassword":                       []byte(metadataCreds.Password),                 // <-|
-		"hsmIP":                             []byte(metadataCreds.IP),                       // <-|
-		"hsmCIDR":                           []byte(fmt.Sprintf("%s/32", metadataCreds.IP)), // <-|
-		"hsmCustomerCA.crt":                 []byte(metadataCreds.CustomerCA),               // <-|
-		// "samlEncryptionCert":               samlEncyptionCert,
-		// "samlEncryptionCertBase64":         samlEncyptionCertBase64,
-		// "samlEncryptionTruststoreBase64":   samlEncryptionTruststoreBase64,
-		// "samlEncryptionTruststorePassword": samlEncryptionTruststorePassword,
-		// "samlEncryptionKeyLabel":           samlEncryptionKeyLabel,
-		// "samlEncryptionTruststore":        samlEncryptionTruststore,
-		// .. etc
+		"hsmUser":                           []byte(samlSigningCreds.User),
+		"hsmPassword":                       []byte(samlSigningCreds.Password),
+		"hsmIP":                             []byte(samlSigningCreds.IP),
+		"hsmCIDR":                           []byte(fmt.Sprintf("%s/32", samlSigningCreds.IP)),
+		"hsmCustomerCA.crt":                 []byte(samlSigningCreds.CustomerCA),
 	}
 	return data, nil
-}
-
-func (r *ReconcileMetadata) getCredentials() (hsm.Credentials, error) {
-	hsmCustomerCACertPath := os.Getenv("HSM_CUSTOMER_CA_CERT_PATH")
-	if hsmCustomerCACertPath == "" {
-		hsmCustomerCACertPath = DefaultCustomerCACertPath
-	}
-	hsmCustomerCA, err := ioutil.ReadFile(hsmCustomerCACertPath)
-	if err != nil {
-		return hsm.Credentials{}, fmt.Errorf("failed to read %s: %s", hsmCustomerCACertPath, err)
-	}
-	if len(hsmCustomerCA) == 0 {
-		return hsm.Credentials{}, fmt.Errorf("%s certificate was zero bytes", hsmCustomerCACertPath)
-	}
-	hsmCreds := hsm.Credentials{
-		IP:         os.Getenv("HSM_IP"),
-		User:       os.Getenv("HSM_USER"),
-		Password:   os.Getenv("HSM_PASSWORD"),
-		CustomerCA: string(hsmCustomerCA),
-	}
-	return hsmCreds, nil
 }
 
 // Reconcile reads that state of the cluster for a Metadata object and makes changes based on the state read
@@ -237,12 +254,6 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 
-	// Grab the VMC's HSM creds
-	hsmCreds, err := r.getCredentials()
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
 	// Generate a hash of the metadata values
 	currentVersionInt, err := hashstructure.Hash(instance.Spec, nil)
 	if err != nil {
@@ -250,16 +261,31 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	}
 	currentVersion := fmt.Sprintf("%d", currentVersionInt)
 
+	// TODO: fetch cert/key from Secret generated by CertificateRequest resource
+
+	// lookup certifcate authority data
+	caSecret := &corev1.Secret{}
+	err = r.Get(context.TODO(), types.NamespacedName{
+		Name:      instance.Spec.CertificateAuthority.SecretName,
+		Namespace: instance.Spec.CertificateAuthority.Namespace,
+	}, caSecret)
+	if err != nil && errors.IsNotFound(err) {
+		return reconcile.Result{}, fmt.Errorf("certificateAuthority Secret '%s' not found in namespace '%s'", instance.Spec.CertificateAuthority.SecretName, instance.Spec.CertificateAuthority.Namespace)
+	}
+
 	// Find or create metadataSecret
 	foundSecret := &corev1.Secret{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, foundSecret)
+	err = r.Get(context.TODO(), types.NamespacedName{
+		Name:      instance.Name,
+		Namespace: instance.Namespace,
+	}, foundSecret)
 	if err != nil && errors.IsNotFound(err) {
 		log.Info("creating-secret",
 			"namespace", instance.Namespace,
 			"name", instance.Name,
 			"version", currentVersion,
 		)
-		metadataSecretData, err := r.generateMetadataSecretData(instance, hsmCreds, hsmCreds) // TODO: use different hsm creds for metadata signing vs generated per-namespace keypairs
+		metadataSecretData, err := r.generateMetadataSecretData(instance, caSecret)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -295,7 +321,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			"name", foundSecret.Name,
 			"version", foundSecret.ObjectMeta.Annotations[VersionAnnotation],
 		)
-		updatedData, err := r.generateMetadataSecretData(instance, hsmCreds, hsmCreds)
+		updatedData, err := r.generateMetadataSecretData(instance, caSecret)
 		if err != nil {
 			return reconcile.Result{}, err
 		}

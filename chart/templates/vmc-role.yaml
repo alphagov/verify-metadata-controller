@@ -10,6 +10,26 @@ metadata:
     app.kubernetes.io/managed-by: {{ .Release.Service }}
 rules:
 - apiGroups:
+  - verify.gov.uk
+  resources:
+  - certificaterequests
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - verify.gov.uk
+  resources:
+  - certificaterequests/status
+  verbs:
+  - get
+  - update
+  - patch
+- apiGroups:
   - apps
   resources:
   - deployments
@@ -32,7 +52,7 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - configmaps
+  - secrets
   verbs:
   - get
   - list
@@ -44,7 +64,7 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - configmaps/status
+  - secrets/status
   verbs:
   - get
   - update

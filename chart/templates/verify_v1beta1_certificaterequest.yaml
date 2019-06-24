@@ -4,14 +4,12 @@ metadata:
   creationTimestamp: null
   labels:
     controller-tools.k8s.io: "1.0"
-  name: metadata.verify.gov.uk
-  annotations:
-    "helm.sh/hook": crd-install
+  name: certificaterequests.verify.gov.uk
 spec:
   group: verify.gov.uk
   names:
-    kind: Metadata
-    plural: metadata
+    kind: CertificateRequest
+    plural: certificaterequests
   scope: Namespaced
   validation:
     openAPIV3Schema:
@@ -30,10 +28,33 @@ spec:
           type: object
         spec:
           properties:
-            enabled:
+            caCert:
               type: boolean
-            id:
+            certificateAuthority:
+              properties:
+                namespace:
+                  type: string
+                secretName:
+                  type: string
+              required:
+              - secretName
+              - namespace
+              type: object
+            commonName:
               type: string
+            countryCode:
+              type: string
+            expiryMonths:
+              format: int64
+              type: integer
+            location:
+              type: string
+            organization:
+              type: string
+            organizationUnit:
+              type: string
+          required:
+          - commonName
           type: object
         status:
           type: object

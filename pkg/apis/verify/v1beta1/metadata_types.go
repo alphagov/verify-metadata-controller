@@ -38,10 +38,12 @@ type MetadataSigningSpec struct {
 // MetadataSpec defines the desired state of Metadata
 // +k8s:openapi-gen=true
 type MetadataSpec struct {
-	ID      string              `json:"id,omitempty"`
-	Type    string              `json:"type"`
-	Data    MetadataSigningSpec `json:"data,omitempty"`
-	Enabled bool                `json:"enabled,omitempty"`
+	ID                     string                   `json:"id,omitempty"`
+	Type                   string                   `json:"type"`
+	Data                   MetadataSigningSpec      `json:"data,omitempty"`
+	Enabled                bool                     `json:"enabled,omitempty"`
+	CertificateAuthority   CertificateAuthoritySpec `json:"certificateAuthority"`
+	SAMLSigningCertificate CertificateRequestSpec   `json:"samlSigningCertRequest"`
 }
 
 // MetadataStatus defines the observed state of Metadata
