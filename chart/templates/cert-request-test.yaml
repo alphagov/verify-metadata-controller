@@ -1,0 +1,16 @@
+---
+apiVersion: verify.gov.uk/v1beta1
+kind: CertificateRequest
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: verify-root-ca-test
+  namespace: {{ .Release.Namespace }}
+spec:
+  countryCode: GB
+  commonName: Verify Test Root CA
+  expiryMonths: 120
+  organization: Cabinet Office
+  organizationUnit: GDS
+  location: London
+  CACert: true
