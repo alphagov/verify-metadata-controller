@@ -6,8 +6,6 @@ import org.apache.xml.security.algorithms.JCEMapper;
 import org.apache.xml.security.signature.XMLSignature;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.joda.time.DateTime;
-import org.opensaml.core.config.InitializationException;
-import org.opensaml.core.config.InitializationService;
 import org.opensaml.core.xml.io.MarshallingException;
 import org.opensaml.core.xml.util.XMLObjectSupport;
 import org.opensaml.saml.common.xml.SAMLConstants;
@@ -19,7 +17,6 @@ import org.opensaml.saml.security.impl.SAMLSignatureProfileValidator;
 import org.opensaml.security.SecurityException;
 import org.opensaml.security.credential.Credential;
 import org.opensaml.security.credential.UsageType;
-import org.opensaml.security.crypto.KeySupport;
 import org.opensaml.security.x509.BasicX509Credential;
 import org.opensaml.security.x509.X509Support;
 import org.opensaml.xmlsec.SignatureSigningParameters;
@@ -54,12 +51,11 @@ import java.util.concurrent.Callable;
 public class MetadataGenerator implements Callable<Void> {
     private final Logger LOG = LoggerFactory.getLogger(MetadataGenerator.class);
     private final Yaml yaml = new Yaml();
-    private BasicX509Credential signingCredential;
+    private BasicX509Credential samlSigningCredential;
+    private BasicX509Credential metadataSigningCredential;
     private X509KeyInfoGeneratorFactory keyInfoGeneratorFactory;
 
     enum NodeType { connector, proxy }
-    enum CredentialType { file, cloudhsm }
-
     enum SigningAlgoType {
         rsa(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA256),
         rsapss(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA256_MGF1),
@@ -78,50 +74,38 @@ public class MetadataGenerator implements Callable<Void> {
     @CommandLine.Parameters(index = "1", description = "YAML definition file")
     private File yamlFile;
 
-    @CommandLine.Parameters(index = "2", description = "Public X509 cert corresponding to private key")
-    private File signingCertFile;
+    @CommandLine.Parameters(index = "2", description = "Public X509 cert for saml signing")
+    private File samlSigningCertFile;
 
-    @CommandLine.Option(names = "--output", description = "Output file")
+    @CommandLine.Parameters(index = "3", description = "Public X509 cert for metadata signing")
+    private File metadataSigningCertFile;
+
+    @CommandLine.Option(names = "--output", description = "Output metadata file")
     private File outputFile;
 
     @CommandLine.Option(names = "--algorithm", description = "Signing algorithm")
     private SigningAlgoType signingAlgo = SigningAlgoType.rsa;
 
-    @CommandLine.Option(names = "--credential", description = "Type of private key credential")
-    private CredentialType credentialType = CredentialType.file;
+    @CommandLine.Option(names = "--hsm-saml-signing-label", description = "HSM Signing key label")
+    private String hsmSigningKeyLabel = "private_key";
 
-    @CommandLine.Option(names = "--key-file", description = "Private key file")
-    private File keyFile;
-
-    @CommandLine.Option(names = "--key-pass", description = "Passphrase for encrypted private key")
-    private String keyPass = "";
-
-    @CommandLine.Option(names = "--hsm-key-label", description = "HSM key label")
-    private String hsmKeyLabel = "private_key";
-
-    public static void main(String[] args) throws InitializationException {
-        InitializationService.initialize();
-        CommandLine.call(new MetadataGenerator(), args);
-    }
+    @CommandLine.Option(names = "--hsm-metadata-signing-label", description = "HSM Metadata key label")
+    private String hsmMetadataKeyLabel = "private_key";
 
     @Override
     public Void call() throws Exception {
-        X509Certificate signingCert = X509Support.decodeCertificate(signingCertFile);
+        X509Certificate samlSigningCert = X509Support.decodeCertificate(samlSigningCertFile);
+        X509Certificate metadataSigningCert = X509Support.decodeCertificate(metadataSigningCertFile);
 
         if (signingAlgo == SigningAlgoType.rsapss) {
             Security.addProvider(new BouncyCastleProvider());
         }
 
-        switch (credentialType) {
-            case file:
-                signingCredential = getSigningCredentialFromFile(signingCert, keyFile, keyPass);
-                break;
-            case cloudhsm:
-                signingCredential = getSigningCredentialFromCloudHSM(signingCert);
-                break;
-        }
+        setSecurityProvider();
+        samlSigningCredential = getSigningCredentialFromCloudHSM(samlSigningCert, hsmSigningKeyLabel);
+        metadataSigningCredential = getSigningCredentialFromCloudHSM(metadataSigningCert, hsmMetadataKeyLabel);
 
-        if (signingCredential.getPublicKey() instanceof ECPublicKey) {
+        if (metadataSigningCredential.getPublicKey() instanceof ECPublicKey) {
             LOG.warn("Credential public key is of EC type, using ECDSA signing algorithm");
             signingAlgo = SigningAlgoType.ecdsa;
         }
@@ -141,32 +125,19 @@ public class MetadataGenerator implements Callable<Void> {
         return null;
     }
 
-    private BasicX509Credential getSigningCredentialFromCloudHSM(X509Certificate cert) throws Exception {
+    private BasicX509Credential getSigningCredentialFromCloudHSM(X509Certificate cert, String label) throws Exception {
+        KeyStore cloudHsmStore = KeyStore.getInstance("Cavium");
+        cloudHsmStore.load(null, null);
+        return new BasicX509Credential(cert, (PrivateKey) cloudHsmStore.getKey(label, null));
+    }
+
+    private void setSecurityProvider() throws InstantiationException, IllegalAccessException, java.lang.reflect.InvocationTargetException, NoSuchMethodException, ClassNotFoundException {
         Provider caviumProvider = (Provider) ClassLoader.getSystemClassLoader()
             .loadClass("com.cavium.provider.CaviumProvider")
             .getConstructor()
             .newInstance();
         Security.addProvider(caviumProvider);
         JCEMapper.setProviderId("Cavium");
-        KeyStore cloudHsmStore = KeyStore.getInstance("Cavium");
-        cloudHsmStore.load(null, null);
-        return new BasicX509Credential(cert, (PrivateKey) cloudHsmStore.getKey(hsmKeyLabel, null));
-    }
-
-    private BasicX509Credential getSigningCredentialFromFile(X509Certificate cert, File keyFile, String keyPass) {
-        if (keyFile == null) {
-            LOG.error("Need to specify keyFile when credential type is file");
-            System.exit(1);
-        }
-        LOG.info("Using credential from file: keyFile={} keyPass={}", keyFile, keyPass);
-        try {
-            PrivateKey key = KeySupport.decodePrivateKey(keyFile, keyPass.toCharArray());
-            return new BasicX509Credential(cert, key);
-        } catch(Exception e) {
-            LOG.error("Could not read from private key file, is there a passphrase?\nException: {}", e.getMessage());
-            System.exit(1);
-        }
-        return null;
     }
 
     private String renderTemplate(String template, Map values) {
@@ -192,32 +163,32 @@ public class MetadataGenerator implements Callable<Void> {
         LOG.info("Attempting to sign metadata");
         LOG.info("\n  Algorithm: {}\n  Credential: {}\n",
             signingAlgo.uri,
-            signingCredential.getEntityCertificate().getSubjectDN().getName());
+            metadataSigningCredential.getEntityCertificate().getSubjectDN().getName());
 
         SignatureSigningParameters signingParams = new SignatureSigningParameters();
         signingParams.setSignatureAlgorithm(signingAlgo.uri);
         signingParams.setSignatureCanonicalizationAlgorithm(SignatureConstants.ALGO_ID_C14N_EXCL_OMIT_COMMENTS);
-        signingParams.setSigningCredential(signingCredential);
+        signingParams.setSigningCredential(metadataSigningCredential);
         signingParams.setKeyInfoGenerator(keyInfoGeneratorFactory.newInstance());
 
         SignatureSupport.signObject(entityDescriptor, signingParams);
 
         SAMLSignatureProfileValidator signatureProfileValidator = new SAMLSignatureProfileValidator();
         signatureProfileValidator.validate(entityDescriptor.getSignature());
-        SignatureValidator.validate(entityDescriptor.getSignature(), signingCredential);
+        SignatureValidator.validate(entityDescriptor.getSignature(), metadataSigningCredential);
     }
 
     private void updateSsoDescriptor(EntityDescriptor entityDescriptor) throws SecurityException {
         switch (nodeType) {
             case connector:
                 SPSSODescriptor spSso = entityDescriptor.getSPSSODescriptor(SAMLConstants.SAML20P_NS);
-                spSso.getKeyDescriptors().add(buildKeyDescriptor(UsageType.SIGNING, signingCredential));
-                spSso.getKeyDescriptors().add(buildKeyDescriptor(UsageType.ENCRYPTION, signingCredential));
+                spSso.getKeyDescriptors().add(buildKeyDescriptor(UsageType.SIGNING, metadataSigningCredential));
+                spSso.getKeyDescriptors().add(buildKeyDescriptor(UsageType.ENCRYPTION, metadataSigningCredential));
                 break;
 
             case proxy:
                 IDPSSODescriptor idpSso = entityDescriptor.getIDPSSODescriptor(SAMLConstants.SAML20P_NS);
-                idpSso.getKeyDescriptors().add(buildKeyDescriptor(UsageType.SIGNING, signingCredential));
+                idpSso.getKeyDescriptors().add(buildKeyDescriptor(UsageType.SIGNING, samlSigningCredential));
                 break;
         }
     }
