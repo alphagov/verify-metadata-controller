@@ -20,7 +20,6 @@ spec:
       labels:
         app.kubernetes.io/name: vmc
         app.kubernetes.io/instance: {{ .Release.Name }}
-        talksToHsm: ""
     spec:
       containers:
       - name: controller

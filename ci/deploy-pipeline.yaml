@@ -64,6 +64,7 @@ spec:
             RELEASE_NAME: v1
             RELEASE_NAMESPACE: ((cluster-deployer.namespace))
             CLUSTER_PRIVATE_KEY: ((cluster.privateKey))
+            CLOUDHSM_IP: ((cluster.cloudHsmIp))
           run:
             path: /bin/bash
             args:
@@ -83,6 +84,7 @@ spec:
                 --namespace "${RELEASE_NAMESPACE}" \
                 --set "global.cluster.name=${CLUSTER_NAME}" \
                 --set "global.cluster.domain=${CLUSTER_DOMAIN}" \
+                --set "global.cloudHsm.ip=${CLOUDHSM_IP}" \
                 --set "vmc.secretName=vmc" \
                 --output-dir "./manifests/" \
                 ./release/*.tgz
