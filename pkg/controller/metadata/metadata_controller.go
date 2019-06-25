@@ -46,11 +46,10 @@ import (
 )
 
 const (
-	cloudHSMKeyType           = "cloudhsm"
-	metadataXMLKey            = "metadata.xml"
-	truststorePassword        = "mashmallow"
-	DefaultCustomerCACertPath = "/opt/cloudhsm/etc/customerCA.crt"
-	VersionAnnotation         = "metadata-version"
+	cloudHSMKeyType    = "cloudhsm"
+	metadataXMLKey     = "metadata.xml"
+	truststorePassword = "mashmallow"
+	VersionAnnotation  = "metadata-version"
 )
 
 var log = logf.Log.WithName("controller")
@@ -146,28 +145,17 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 	if metadataHSMCustomerCA == nil {
 		return nil, fmt.Errorf("no 'hsmIP' value in CA secret '%s'", caSecret.ObjectMeta.Name)
 	}
-	metadataHSMCreds := hsm.Credentials{
-		IP:         string(metadataHSMIP),
-		User:       string(metadataHSMUser),
-		Password:   string(metadataHSMPassword),
-		CustomerCA: string(metadataHSMCustomerCA),
-	}
 	metadataSigningCert := caSecret.Data["cert"]
 	if metadataSigningCert == nil {
-		return nil, fmt.Errorf("no 'cert' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+		return nil, fmt.Errorf("no 'cert' value in caSecret '%s'", caSecret.ObjectMeta.Name)
 	}
 	metadataSigningKeyLabel := caSecret.Data["label"]
 	if metadataSigningKeyLabel == nil {
-		return nil, fmt.Errorf("no 'label' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+		return nil, fmt.Errorf("no 'label' value in caSecret '%s'", caSecret.ObjectMeta.Name)
 	}
 	metadataSigningTruststore, err := generateTruststore(metadataSigningCert, string(metadataSigningKeyLabel), truststorePassword)
 	if err != nil {
 		return nil, err
-	}
-
-	signedMetadata, err := r.hsm.GenerateAndSignMetadata(metadataSigningCert, string(metadataSigningKeyLabel), instance.Spec, metadataHSMCreds)
-	if err != nil {
-		return nil, fmt.Errorf("generateAndSignMetadata(%s): %s", metadataSigningKeyLabel, err)
 	}
 
 	// generate samlSigningCert and key
@@ -197,6 +185,36 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		return nil, err
 	}
 	samlSigningTruststorePassword := truststorePassword
+
+	metadataRequest := hsm.GenerateMetadataRequest{
+		MetadataSigningCert:     metadataSigningCert,
+		SAMLSigningCert:         samlSigningCert,
+		MetadataSigningKeyLabel: string(metadataSigningKeyLabel),
+		SamlSigningKeyLabel:     string(samlSigningKeyLabel),
+		HSMCreds: hsm.Credentials{
+			IP:         string(metadataHSMIP),
+			User:       string(metadataHSMUser),
+			Password:   string(metadataHSMPassword),
+			CustomerCA: string(metadataHSMCustomerCA),
+		},
+		Type: instance.Spec.Type,
+		Data: hsm.MetadataRequestData{
+			EntityID:         instance.Spec.Data.EntityID,
+			PostURL:          instance.Spec.Data.PostURL,
+			RedirectURL:      instance.Spec.Data.RedirectURL,
+			OrgName:          instance.Spec.Data.OrgName,
+			OrgDisplayName:   instance.Spec.Data.OrgDisplayName,
+			OrgURL:           instance.Spec.Data.OrgURL,
+			ContactCompany:   instance.Spec.Data.ContactCompany,
+			ContactGivenName: instance.Spec.Data.ContactGivenName,
+			ContactSurname:   instance.Spec.Data.ContactSurname,
+			ContactEmail:     instance.Spec.Data.ContactEmail,
+		},
+	}
+	signedMetadata, err := r.hsm.GenerateAndSignMetadata(metadataRequest)
+	if err != nil {
+		return nil, fmt.Errorf("generateAndSignMetadata(%s): %s", metadataSigningKeyLabel, err)
+	}
 
 	// generate Secret containing generated assets (including signed metadata xml)
 	data := map[string][]byte{
