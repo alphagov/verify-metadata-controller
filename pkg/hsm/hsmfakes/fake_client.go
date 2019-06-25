@@ -4,7 +4,6 @@ package hsmfakes
 import (
 	"sync"
 
-	"github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
 	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
 )
 
@@ -67,13 +66,10 @@ type FakeClient struct {
 		result1 []byte
 		result2 error
 	}
-	GenerateAndSignMetadataStub        func([]byte, string, v1beta1.MetadataSpec, hsm.Credentials) ([]byte, error)
+	GenerateAndSignMetadataStub        func(hsm.GenerateMetadataRequest) ([]byte, error)
 	generateAndSignMetadataMutex       sync.RWMutex
 	generateAndSignMetadataArgsForCall []struct {
-		arg1 []byte
-		arg2 string
-		arg3 v1beta1.MetadataSpec
-		arg4 hsm.Credentials
+		arg1 hsm.GenerateMetadataRequest
 	}
 	generateAndSignMetadataReturns struct {
 		result1 []byte
@@ -345,24 +341,16 @@ func (fake *FakeClient) FindOrCreateRSAKeyPairReturnsOnCall(i int, result1 []byt
 	}{result1, result2}
 }
 
-func (fake *FakeClient) GenerateAndSignMetadata(arg1 []byte, arg2 string, arg3 v1beta1.MetadataSpec, arg4 hsm.Credentials) ([]byte, error) {
-	var arg1Copy []byte
-	if arg1 != nil {
-		arg1Copy = make([]byte, len(arg1))
-		copy(arg1Copy, arg1)
-	}
+func (fake *FakeClient) GenerateAndSignMetadata(arg1 hsm.GenerateMetadataRequest) ([]byte, error) {
 	fake.generateAndSignMetadataMutex.Lock()
 	ret, specificReturn := fake.generateAndSignMetadataReturnsOnCall[len(fake.generateAndSignMetadataArgsForCall)]
 	fake.generateAndSignMetadataArgsForCall = append(fake.generateAndSignMetadataArgsForCall, struct {
-		arg1 []byte
-		arg2 string
-		arg3 v1beta1.MetadataSpec
-		arg4 hsm.Credentials
-	}{arg1Copy, arg2, arg3, arg4})
-	fake.recordInvocation("GenerateAndSignMetadata", []interface{}{arg1Copy, arg2, arg3, arg4})
+		arg1 hsm.GenerateMetadataRequest
+	}{arg1})
+	fake.recordInvocation("GenerateAndSignMetadata", []interface{}{arg1})
 	fake.generateAndSignMetadataMutex.Unlock()
 	if fake.GenerateAndSignMetadataStub != nil {
-		return fake.GenerateAndSignMetadataStub(arg1, arg2, arg3, arg4)
+		return fake.GenerateAndSignMetadataStub(arg1)
 	}
 	if specificReturn {
 		return ret.result1, ret.result2
@@ -377,17 +365,17 @@ func (fake *FakeClient) GenerateAndSignMetadataCallCount() int {
 	return len(fake.generateAndSignMetadataArgsForCall)
 }
 
-func (fake *FakeClient) GenerateAndSignMetadataCalls(stub func([]byte, string, v1beta1.MetadataSpec, hsm.Credentials) ([]byte, error)) {
+func (fake *FakeClient) GenerateAndSignMetadataCalls(stub func(hsm.GenerateMetadataRequest) ([]byte, error)) {
 	fake.generateAndSignMetadataMutex.Lock()
 	defer fake.generateAndSignMetadataMutex.Unlock()
 	fake.GenerateAndSignMetadataStub = stub
 }
 
-func (fake *FakeClient) GenerateAndSignMetadataArgsForCall(i int) ([]byte, string, v1beta1.MetadataSpec, hsm.Credentials) {
+func (fake *FakeClient) GenerateAndSignMetadataArgsForCall(i int) hsm.GenerateMetadataRequest {
 	fake.generateAndSignMetadataMutex.RLock()
 	defer fake.generateAndSignMetadataMutex.RUnlock()
 	argsForCall := fake.generateAndSignMetadataArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
+	return argsForCall.arg1
 }
 
 func (fake *FakeClient) GenerateAndSignMetadataReturns(result1 []byte, result2 error) {

@@ -2,15 +2,13 @@ package awscloudhsm
 
 import (
 	"fmt"
+	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
+	"github.com/labstack/gommon/log"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
-
-	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
-	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
-	"github.com/labstack/gommon/log"
-	"gopkg.in/yaml.v2"
 )
 
 var _ hsm.Client = &Client{}
@@ -103,11 +101,11 @@ func (c *Client) CreateChainedCert(label string, hsmCreds hsm.Credentials, req h
 	return out, nil
 }
 
-func (c *Client) GenerateAndSignMetadata(metadataSigningCert []byte, metadataSigningKeyLabel string, spec verifyv1beta1.MetadataSpec, hsmCreds hsm.Credentials) (signedMetadata []byte, err error) {
-	if spec.Type == "" {
+func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (signedMetadata []byte, err error) {
+	if request.Type == "" {
 		return nil, fmt.Errorf("spec.Type must be set")
 	}
-	specFileName, err := createGeneratorFile(spec.Data)
+	specFileName, err := createGeneratorFile(request.Data)
 	defer os.Remove(specFileName)
 	if err != nil {
 		return nil, err
@@ -118,30 +116,39 @@ func (c *Client) GenerateAndSignMetadata(metadataSigningCert []byte, metadataSig
 		return nil, err
 	}
 	defer os.RemoveAll(tmpDir)
-	tmpMetadataSigningCertPath := filepath.Join(tmpDir, "cert.pem")
+	tmpMetadataSigningCertPath := filepath.Join(tmpDir, "saml-cert.pem")
+	tmpSAMLSigningCertPath := filepath.Join(tmpDir, "metadata-cert.pem")
 	tmpMetadataOutputPath := filepath.Join(tmpDir, "metadata.xml")
 
-	if err := ioutil.WriteFile(tmpMetadataSigningCertPath, metadataSigningCert, 0644); err != nil {
+	if err := ioutil.WriteFile(tmpMetadataSigningCertPath, request.MetadataSigningCert, 0644); err != nil {
+		return nil, err
+	}
+
+	if err := ioutil.WriteFile(tmpSAMLSigningCertPath, request.SAMLSigningCert, 0644); err != nil {
 		return nil, err
 	}
 
 	log.Info("mdgen",
-		"type", spec.Type,
+		"type", request.Type,
 		"input", specFileName,
 		"output", tmpMetadataOutputPath,
-		"label", metadataSigningKeyLabel,
+		"metadataSigningKeyLabel", request.MetadataSigningKeyLabel,
+		"samlSigningKeyLabel", request.SamlSigningKeyLabel,
 	)
-	cmd := exec.Command("/mdgen/build/install/mdgen/bin/mdgen", spec.Type,
-		specFileName, tmpMetadataSigningCertPath,
+	cmd := exec.Command("/mdgen/build/install/mdgen/bin/mdgen",
+		request.Type,
+		specFileName,
+		tmpMetadataSigningCertPath,
+		tmpSAMLSigningCertPath,
 		"--output", tmpMetadataOutputPath,
 		"--algorithm", "rsa",
-		"--credential", "cloudhsm",
-		"--hsm-key-label", metadataSigningKeyLabel,
+		"--hsm-metadata-signing-label", request.MetadataSigningKeyLabel,
+		"--hsm-saml-signing-label", request.SamlSigningKeyLabel,
 	)
 	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("HSM_USER=%s", hsmCreds.User),
-		fmt.Sprintf("HSM_PASSWORD=%s", hsmCreds.Password),
-		fmt.Sprintf("HSM_IP=%s", hsmCreds.IP),
+		fmt.Sprintf("HSM_USER=%s", request.HSMCreds.User),
+		fmt.Sprintf("HSM_PASSWORD=%s", request.HSMCreds.Password),
+		fmt.Sprintf("HSM_IP=%s", request.HSMCreds.IP),
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -162,32 +169,8 @@ func (c *Client) GenerateAndSignMetadata(metadataSigningCert []byte, metadataSig
 	return b, nil
 }
 
-func createGeneratorFile(spec verifyv1beta1.MetadataSigningSpec) (fileName string, err error) {
-	specContents, err := yaml.Marshal(
-		struct {
-			EntityID         string `yaml:"entity_id"`
-			PostURL          string `yaml:"post_url"`
-			RedirectURL      string `yaml:"redirect_url"`
-			OrgName          string `yaml:"org_name"`
-			OrgDisplayName   string `yaml:"org_display_name"`
-			OrgURL           string `yaml:"org_url"`
-			ContactCompany   string `yaml:"contact_company"`
-			ContactGivenName string `yaml:"contact_given_name"`
-			ContactSurname   string `yaml:"contact_surname"`
-			ContactEmail     string `yaml:"contact_email"`
-		}{
-			EntityID:         spec.EntityID,
-			PostURL:          spec.PostURL,
-			RedirectURL:      spec.RedirectURL,
-			OrgName:          spec.OrgName,
-			OrgDisplayName:   spec.OrgDisplayName,
-			OrgURL:           spec.OrgURL,
-			ContactCompany:   spec.ContactCompany,
-			ContactGivenName: spec.ContactGivenName,
-			ContactSurname:   spec.ContactSurname,
-			ContactEmail:     spec.ContactEmail,
-		},
-	)
+func createGeneratorFile(data hsm.MetadataRequestData) (fileName string, err error) {
+	specContents, err := yaml.Marshal(data)
 	if err != nil {
 		return "", err
 	}
