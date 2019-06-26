@@ -137,13 +137,13 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 	if metadataHSMPassword == nil {
 		return nil, fmt.Errorf("no 'hsmPassword' value in CA secret '%s'", caSecret.ObjectMeta.Name)
 	}
-	metadataHSMIP := caSecret.Data["hsmPassword"]
+	metadataHSMIP := caSecret.Data["hsmIP"]
 	if metadataHSMIP == nil {
 		return nil, fmt.Errorf("no 'hsmIP' value in CA secret '%s'", caSecret.ObjectMeta.Name)
 	}
 	metadataHSMCustomerCA := caSecret.Data["hsmCustomerCA"]
 	if metadataHSMCustomerCA == nil {
-		return nil, fmt.Errorf("no 'hsmIP' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+		return nil, fmt.Errorf("no 'hsmCustomerCA' value in CA secret '%s'", caSecret.ObjectMeta.Name)
 	}
 	metadataSigningCert := caSecret.Data["cert"]
 	if metadataSigningCert == nil {
@@ -289,6 +289,8 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	}, caSecret)
 	if err != nil && errors.IsNotFound(err) {
 		return reconcile.Result{}, fmt.Errorf("certificateAuthority Secret '%s' not found in namespace '%s'", instance.Spec.CertificateAuthority.SecretName, instance.Spec.CertificateAuthority.Namespace)
+	} else if err != nil {
+		return reconcile.Result{}, fmt.Errorf("certificateAuthority Secret '%s' in namespace '%s': %s", instance.Spec.CertificateAuthority.SecretName, instance.Spec.CertificateAuthority.Namespace, err)
 	}
 
 	// Find or create metadataSecret
