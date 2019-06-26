@@ -67,7 +67,7 @@ spec:
               type: string
             samlSigningCertRequest:
               properties:
-                caCert:
+                CACert:
                   type: boolean
                 certificateAuthority:
                   properties:

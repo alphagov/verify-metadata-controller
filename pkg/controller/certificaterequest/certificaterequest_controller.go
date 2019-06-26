@@ -130,6 +130,7 @@ func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reco
 			Location:         instance.Spec.Location,
 			Organization:     instance.Spec.Organization,
 			OrganizationUnit: instance.Spec.OrganizationUnit,
+			CACert:           instance.Spec.CACert,
 		}
 
 		// the hsm fn to call

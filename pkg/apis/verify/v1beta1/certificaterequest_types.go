@@ -36,7 +36,7 @@ type CertificateRequestSpec struct {
 	Location             string                    `json:"location,omitempty"`
 	Organization         string                    `json:"organization,omitempty"`
 	OrganizationUnit     string                    `json:"organizationUnit,omitempty"`
-	CACert               bool                      `json:"caCert,omitempty"`
+	CACert               bool                      `json:"CACert,omitempty"`
 	CertificateAuthority *CertificateAuthoritySpec `json:"certificateAuthority,omitempty"`
 }
 

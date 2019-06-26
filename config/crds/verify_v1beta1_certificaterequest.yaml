@@ -28,7 +28,7 @@ spec:
           type: object
         spec:
           properties:
-            caCert:
+            CACert:
               type: boolean
             certificateAuthority:
               properties:
