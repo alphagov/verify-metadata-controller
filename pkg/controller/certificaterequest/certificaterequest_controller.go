@@ -47,11 +47,11 @@ var log = logf.Log.WithName("controller")
 // Add creates a new CertificateRequest Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager, hsmClient hsm.Client) error {
-	return add(mgr, newReconciler(mgr, hsmClient))
+	return AddReconciler(mgr, NewReconciler(mgr, hsmClient))
 }
 
-// newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, hsmClient hsm.Client) reconcile.Reconciler {
+// NewReconciler returns a new reconcile.Reconciler
+func NewReconciler(mgr manager.Manager, hsmClient hsm.Client) reconcile.Reconciler {
 	return &ReconcileCertificateRequest{
 		Client: mgr.GetClient(),
 		scheme: mgr.GetScheme(),
@@ -59,8 +59,8 @@ func newReconciler(mgr manager.Manager, hsmClient hsm.Client) reconcile.Reconcil
 	}
 }
 
-// add adds a new Controller to mgr with r as the reconcile.Reconciler
-func add(mgr manager.Manager, r reconcile.Reconciler) error {
+// AddReconciler adds a new Controller to mgr with r as the reconcile.Reconciler
+func AddReconciler(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Create a new controller
 	c, err := controller.New("certificaterequest-controller", mgr, controller.Options{Reconciler: r})
 	if err != nil {

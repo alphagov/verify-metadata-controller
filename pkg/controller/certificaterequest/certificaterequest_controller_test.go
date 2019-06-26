@@ -64,8 +64,8 @@ func TestReconcileRootCA(t *testing.T) {
 	mgr, err := manager.New(cfg, manager.Options{})
 	g.Expect(err).NotTo(HaveOccurred())
 	c := mgr.GetClient()
-	recFn, reconcileCallCount := SetupTestReconcile(newReconciler(mgr, hsmClient), t)
-	g.Expect(add(mgr, recFn)).NotTo(HaveOccurred())
+	recFn, reconcileCallCount := SetupTestReconcile(NewReconciler(mgr, hsmClient), t)
+	g.Expect(AddReconciler(mgr, recFn)).NotTo(HaveOccurred())
 	stopMgr, mgrStopped := StartTestManager(mgr, g)
 	defer func() {
 		close(stopMgr)
@@ -182,8 +182,8 @@ func TestReconcileIntermediateCA(t *testing.T) {
 	mgr, err := manager.New(cfg, manager.Options{})
 	g.Expect(err).NotTo(HaveOccurred())
 	c := mgr.GetClient()
-	recFn, reconcileCallCount := SetupTestReconcile(newReconciler(mgr, hsmClient), t)
-	g.Expect(add(mgr, recFn)).NotTo(HaveOccurred())
+	recFn, reconcileCallCount := SetupTestReconcile(NewReconciler(mgr, hsmClient), t)
+	g.Expect(AddReconciler(mgr, recFn)).NotTo(HaveOccurred())
 	stopMgr, mgrStopped := StartTestManager(mgr, g)
 	defer func() {
 		close(stopMgr)
