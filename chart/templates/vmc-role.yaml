@@ -2,7 +2,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: {{ .Release.Name }}-vmc
-  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: vmc
     helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
