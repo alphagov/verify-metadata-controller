@@ -189,8 +189,9 @@ public class MetadataGenerator implements Callable<Void> {
         switch (nodeType) {
             case connector:
                 SPSSODescriptor spSso = entityDescriptor.getSPSSODescriptor(SAMLConstants.SAML20P_NS);
-                spSso.getKeyDescriptors().add(buildKeyDescriptor(UsageType.SIGNING, metadataSigningCredential));
-                spSso.getKeyDescriptors().add(buildKeyDescriptor(UsageType.ENCRYPTION, metadataSigningCredential));
+                spSso.getKeyDescriptors().add(buildKeyDescriptor(UsageType.SIGNING, samlSigningCredential));
+                // TODO use a separate encryption cert
+                spSso.getKeyDescriptors().add(buildKeyDescriptor(UsageType.ENCRYPTION, samlSigningCredential));
                 break;
 
             case proxy:
