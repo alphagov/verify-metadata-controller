@@ -6,6 +6,8 @@ import org.apache.xml.security.algorithms.JCEMapper;
 import org.apache.xml.security.signature.XMLSignature;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.joda.time.DateTime;
+import org.opensaml.core.config.InitializationException;
+import org.opensaml.core.config.InitializationService;
 import org.opensaml.core.xml.io.MarshallingException;
 import org.opensaml.core.xml.util.XMLObjectSupport;
 import org.opensaml.saml.common.xml.SAMLConstants;
@@ -91,6 +93,11 @@ public class MetadataGenerator implements Callable<Void> {
 
     @CommandLine.Option(names = "--hsm-metadata-signing-label", description = "HSM Metadata key label")
     private String hsmMetadataKeyLabel = "private_key";
+
+    public static void main(String[] args) throws InitializationException {
+        InitializationService.initialize();
+        CommandLine.call(new MetadataGenerator(), args);
+    }
 
     @Override
     public Void call() throws Exception {
