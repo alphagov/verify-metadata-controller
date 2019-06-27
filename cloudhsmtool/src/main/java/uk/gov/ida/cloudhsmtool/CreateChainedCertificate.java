@@ -72,7 +72,7 @@ public class CreateChainedCertificate extends CreateSelfSignedCertificate implem
 
         if (certAuthority) {
             certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.keyCertSign));
-            certBuilder.addExtension(Extension.basicConstraints, false, new BasicConstraints(true));
+            certBuilder.addExtension(Extension.basicConstraints, true, new BasicConstraints(true));
         } else {
             certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature));
         }
