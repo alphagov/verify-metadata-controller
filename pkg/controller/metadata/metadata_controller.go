@@ -17,6 +17,7 @@ limitations under the License.
 package metadata
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -57,11 +58,11 @@ var log = logf.Log.WithName("controller")
 // Add creates a new Metadata Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager, hsmClient hsm.Client) error {
-	return add(mgr, newReconciler(mgr, hsmClient))
+	return AddReconciler(mgr, NewReconciler(mgr, hsmClient))
 }
 
-// newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, hsmClient hsm.Client) reconcile.Reconciler {
+// NewReconciler returns a new reconcile.Reconciler
+func NewReconciler(mgr manager.Manager, hsmClient hsm.Client) reconcile.Reconciler {
 	return &ReconcileMetadata{
 		Client: mgr.GetClient(),
 		scheme: mgr.GetScheme(),
@@ -69,8 +70,8 @@ func newReconciler(mgr manager.Manager, hsmClient hsm.Client) reconcile.Reconcil
 	}
 }
 
-// add adds a new Controller to mgr with r as the reconcile.Reconciler
-func add(mgr manager.Manager, r reconcile.Reconciler) error {
+// AddReconciler adds a new Controller to mgr with r as the reconcile.Reconciler
+func AddReconciler(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Create a new controller
 	c, err := controller.New("metadata-controller", mgr, controller.Options{Reconciler: r})
 	if err != nil {
@@ -125,38 +126,93 @@ type ReconcileMetadata struct {
 	hsm    hsm.Client
 }
 
-func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.Metadata, caSecret *corev1.Secret) (map[string][]byte, error) {
-	if caSecret == nil {
-		return nil, fmt.Errorf("caSecret is required")
+func (r *ReconcileMetadata) getCACerts(ctx context.Context, name, namespace string) ([][]byte, error) {
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}, secret)
+	if err != nil && errors.IsNotFound(err) {
+		return nil, fmt.Errorf("getCACerts: failed to get Secret %s in namespace %s", name, namespace)
+	} else if err != nil {
+		return nil, fmt.Errorf("getCACerts: failed to get Secret %s in namespace %s: %s", name, namespace, err)
 	}
-	metadataHSMUser := caSecret.Data["hsmUser"]
+	cert := secret.Data["cert"]
+	if cert == nil {
+		return nil, fmt.Errorf("getCACerts: no 'cert' value in Secret %s in namespace %s", name, namespace)
+	}
+	certs := [][]byte{cert}
+	certRequest := &verifyv1beta1.CertificateRequest{}
+	err = r.Get(ctx, types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}, certRequest)
+	if err != nil && errors.IsNotFound(err) {
+		return nil, fmt.Errorf("getCACerts: failed to get CertificateRequest %s in namespace %s", name, namespace)
+	} else if err != nil {
+		return nil, fmt.Errorf("getCACerts: failed to get CertificateRequest %s in namespace %s: %s", name, namespace, err)
+	}
+	if certRequest.Spec.CertificateAuthority != nil {
+		parentCerts, err := r.getCACerts(
+			ctx,
+			certRequest.Spec.CertificateAuthority.SecretName,
+			certRequest.Spec.CertificateAuthority.Namespace,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("getCACerts: failed to call getCACerts: %s", err)
+		}
+		certs = append(certs, parentCerts...)
+	}
+	return certs, nil
+}
+
+func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.Metadata, metadataSigningSecret *corev1.Secret, ca *verifyv1beta1.CertificateAuthoritySpec) (map[string][]byte, error) {
+	if metadataSigningSecret == nil {
+		return nil, fmt.Errorf("metadataSigningSecret is required")
+	}
+	metadataHSMUser := metadataSigningSecret.Data["hsmUser"]
 	if metadataHSMUser == nil {
-		return nil, fmt.Errorf("no 'hsmUser' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+		return nil, fmt.Errorf("no 'hsmUser' value in CA secret '%s'", metadataSigningSecret.ObjectMeta.Name)
 	}
-	metadataHSMPassword := caSecret.Data["hsmPassword"]
+	metadataHSMPassword := metadataSigningSecret.Data["hsmPassword"]
 	if metadataHSMPassword == nil {
-		return nil, fmt.Errorf("no 'hsmPassword' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+		return nil, fmt.Errorf("no 'hsmPassword' value in CA secret '%s'", metadataSigningSecret.ObjectMeta.Name)
 	}
-	metadataHSMIP := caSecret.Data["hsmIP"]
+	metadataHSMIP := metadataSigningSecret.Data["hsmIP"]
 	if metadataHSMIP == nil {
-		return nil, fmt.Errorf("no 'hsmIP' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+		return nil, fmt.Errorf("no 'hsmIP' value in CA secret '%s'", metadataSigningSecret.ObjectMeta.Name)
 	}
-	metadataHSMCustomerCA := caSecret.Data["hsmCustomerCA"]
+	metadataHSMCustomerCA := metadataSigningSecret.Data["hsmCustomerCA"]
 	if metadataHSMCustomerCA == nil {
-		return nil, fmt.Errorf("no 'hsmCustomerCA' value in CA secret '%s'", caSecret.ObjectMeta.Name)
+		return nil, fmt.Errorf("no 'hsmCustomerCA' value in CA secret '%s'", metadataSigningSecret.ObjectMeta.Name)
 	}
-	metadataSigningCert := caSecret.Data["cert"]
+	metadataSigningCert := metadataSigningSecret.Data["cert"]
 	if metadataSigningCert == nil {
-		return nil, fmt.Errorf("no 'cert' value in caSecret '%s'", caSecret.ObjectMeta.Name)
+		return nil, fmt.Errorf("no 'cert' value in metadataSigningSecret '%s'", metadataSigningSecret.ObjectMeta.Name)
 	}
-	metadataSigningKeyLabel := caSecret.Data["label"]
+	metadataSigningKeyLabel := metadataSigningSecret.Data["label"]
 	if metadataSigningKeyLabel == nil {
-		return nil, fmt.Errorf("no 'label' value in caSecret '%s'", caSecret.ObjectMeta.Name)
+		return nil, fmt.Errorf("no 'label' value in metadataSigningSecret '%s'", metadataSigningSecret.ObjectMeta.Name)
 	}
 	metadataSigningTruststore, err := generateTruststore(metadataSigningCert, string(metadataSigningKeyLabel), truststorePassword)
 	if err != nil {
 		return nil, err
 	}
+
+	// generate ca chain data
+	if ca == nil {
+		return nil, fmt.Errorf("did not expect 'ca' to be nil")
+	}
+	metadataCACerts, err := r.getCACerts(context.TODO(), ca.SecretName, ca.Namespace)
+	if err != nil {
+		return nil, fmt.Errorf("generateMetadataSecretData: %s", err)
+	}
+	metadataCACertsConcat := bytes.Join(metadataCACerts, []byte("\n"))
+	metadataCATruststore, err := generateTruststore(metadataCACertsConcat, "ca", truststorePassword)
+	if err != nil {
+		return nil, err
+	}
+	metadataCATruststorePassword := truststorePassword
 
 	// generate samlSigningCert and key
 	samlSigningCreds, err := hsm.GetCredentials()
@@ -231,6 +287,10 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"metadataSigningTruststore":         []byte(metadataSigningTruststore),
 		"metadataSigningTruststoreBase64":   []byte(base64.StdEncoding.EncodeToString(metadataSigningTruststore)),
 		"metadataSigningTruststorePassword": []byte(truststorePassword),
+		"metadataCACerts":                   []byte(metadataCACertsConcat),
+		"metadataCATruststore":              []byte(metadataCATruststore),
+		"metadataCATruststoreBase64":        []byte(base64.StdEncoding.EncodeToString(metadataCATruststore)),
+		"metadataCATruststorePassword":      []byte(metadataCATruststorePassword),
 		"samlSigningCert":                   []byte(samlSigningCert),
 		"samlSigningCertBase64":             []byte(base64.StdEncoding.EncodeToString(samlSigningCert)),
 		"samlSigningTruststore":             []byte(samlSigningTruststore),
@@ -279,14 +339,12 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	}
 	currentVersion := fmt.Sprintf("%d", currentVersionInt)
 
-	// TODO: fetch cert/key from Secret generated by CertificateRequest resource
-
 	// lookup certifcate authority data
-	caSecret := &corev1.Secret{}
+	metadataSigningSecret := &corev1.Secret{}
 	err = r.Get(context.TODO(), types.NamespacedName{
 		Name:      instance.Spec.CertificateAuthority.SecretName,
 		Namespace: instance.Spec.CertificateAuthority.Namespace,
-	}, caSecret)
+	}, metadataSigningSecret)
 	if err != nil && errors.IsNotFound(err) {
 		return reconcile.Result{}, fmt.Errorf("certificateAuthority Secret '%s' not found in namespace '%s'", instance.Spec.CertificateAuthority.SecretName, instance.Spec.CertificateAuthority.Namespace)
 	} else if err != nil {
@@ -305,7 +363,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			"name", instance.Name,
 			"version", currentVersion,
 		)
-		metadataSecretData, err := r.generateMetadataSecretData(instance, caSecret)
+		metadataSecretData, err := r.generateMetadataSecretData(instance, metadataSigningSecret, &instance.Spec.CertificateAuthority)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -341,7 +399,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			"name", foundSecret.Name,
 			"version", foundSecret.ObjectMeta.Annotations[VersionAnnotation],
 		)
-		updatedData, err := r.generateMetadataSecretData(instance, caSecret)
+		updatedData, err := r.generateMetadataSecretData(instance, metadataSigningSecret, &instance.Spec.CertificateAuthority)
 		if err != nil {
 			return reconcile.Result{}, err
 		}

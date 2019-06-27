@@ -17,12 +17,14 @@ limitations under the License.
 package metadata
 
 import (
+	"bytes"
 	"io/ioutil"
 	"os"
 	"testing"
 	"time"
 
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
+	"github.com/alphagov/verify-metadata-controller/pkg/controller/certificaterequest"
 	"github.com/alphagov/verify-metadata-controller/pkg/hsm/hsmfakes"
 	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"
@@ -41,8 +43,11 @@ func TestReconcile(t *testing.T) {
 	g := NewGomegaWithT(t)
 
 	// Load test certs
-	fakeCert, err := ioutil.ReadFile("test.metadata.signing.crt")
+	fakeMetadataCert, err := ioutil.ReadFile("test.metadata.signing.crt")
 	g.Expect(err).NotTo(HaveOccurred())
+	fakeSamlCert := fakeMetadataCert
+	fakeIntCert := fakeMetadataCert
+	fakeRootCert := fakeMetadataCert
 	fakeCustomerCA, err := ioutil.ReadFile("test.ca.crt")
 	g.Expect(err).NotTo(HaveOccurred())
 
@@ -55,41 +60,129 @@ func TestReconcile(t *testing.T) {
 	// Setup fake hsm client
 	fakeSignedMetadata := []byte("<signed>FAKE-SIGNED-META</signed>")
 	hsmClient := &hsmfakes.FakeClient{}
-	hsmClient.FindOrCreateRSAKeyPairReturns([]byte("----BEGING SAML PUB KEY----"), nil)
+	hsmClient.FindOrCreateRSAKeyPairReturns([]byte("----BEGIN PUB KEY----"), nil)
 	hsmClient.GenerateAndSignMetadataReturns(fakeSignedMetadata, nil)
-	hsmClient.CreateSelfSignedCertReturns(fakeCert, nil)
+	hsmClient.CreateSelfSignedCertReturnsOnCall(0, fakeRootCert, nil)
+	hsmClient.CreateSelfSignedCertReturnsOnCall(1, fakeSamlCert, nil)
+	hsmClient.CreateSelfSignedCertReturnsOnCall(2, fakeSamlCert, nil)
+	// hsmClient.CreateSelfSignedCertReturnsOnCall(2, fakeSamlCert, nil)
+	// hsmClient.CreateSelfSignedCertReturnsOnCall(3, fakeSamlCert, nil)
+	// hsmClient.CreateSelfSignedCertReturnsOnCall(4, fakeSamlCert, nil)
+	hsmClient.CreateChainedCertReturnsOnCall(0, fakeIntCert, nil)
+	hsmClient.CreateChainedCertReturnsOnCall(1, fakeMetadataCert, nil)
+	hsmClient.CreateChainedCertReturnsOnCall(2, fakeMetadataCert, nil)
+	hsmClient.CreateChainedCertReturnsOnCall(3, fakeMetadataCert, nil)
 
 	// Setup the Manager and Controller.
 	mgr, err := manager.New(cfg, manager.Options{})
 	g.Expect(err).NotTo(HaveOccurred())
 	c := mgr.GetClient()
-	recFn, reconcileCallCount := SetupTestReconcile(newReconciler(mgr, hsmClient), t)
-	g.Expect(add(mgr, recFn)).NotTo(HaveOccurred())
+	metaRecFn, reconcileMetadataCallCount := SetupTestReconcile(NewReconciler(mgr, hsmClient), t)
+	g.Expect(AddReconciler(mgr, metaRecFn)).To(Succeed())
+	certRecFn, reconcileCertRequestCallCount := SetupTestReconcile(certificaterequest.NewReconciler(mgr, hsmClient), t)
+	g.Expect(certificaterequest.AddReconciler(mgr, certRecFn)).To(Succeed())
 	stopMgr, mgrStopped := StartTestManager(mgr, g)
 	defer func() {
 		close(stopMgr)
 		mgrStopped.Wait()
 	}()
 
-	// create a secret to store dummy parent cert authority
-	fakeCertAuthoritySecret := &corev1.Secret{
+	// create fake root certificate request
+	rootCertReq := &verifyv1beta1.CertificateRequest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "root",
 			Namespace: "cert-system",
 		},
-		Type:       corev1.SecretTypeOpaque,
-		StringData: map[string]string{},
-		Data: map[string][]byte{
-			"cert":          fakeCert,
-			"label":         []byte("meta-root-label"),
-			"hsmUser":       []byte("meta-root-user"),
-			"hsmPassword":   []byte("meta-root-passw"),
-			"hsmIP":         []byte("10.0.1.99"),
-			"hsmCustomerCA": []byte("meta-root-cutomer-ca"),
+		Spec: verifyv1beta1.CertificateRequestSpec{
+			CountryCode:      "GB",
+			CommonName:       "RootCA",
+			ExpiryMonths:     12,
+			Location:         "London",
+			Organization:     "Cab",
+			OrganizationUnit: "GDS",
+			CACert:           true,
 		},
 	}
-	err = c.Create(ctx, fakeCertAuthoritySecret)
+	err = c.Create(ctx, rootCertReq)
 	g.Expect(err).ToNot(HaveOccurred())
+
+	// create fake intermediate certificate request
+	intCertReq := &verifyv1beta1.CertificateRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "int",
+			Namespace: "cert-system",
+		},
+		Spec: verifyv1beta1.CertificateRequestSpec{
+			CountryCode:      "GB",
+			CommonName:       "IntermediateCA",
+			ExpiryMonths:     12,
+			Location:         "London",
+			Organization:     "Cab",
+			OrganizationUnit: "GDS",
+			CACert:           true,
+			CertificateAuthority: &verifyv1beta1.CertificateAuthoritySpec{
+				SecretName: "root",
+				Namespace:  "cert-system",
+			},
+		},
+	}
+	err = c.Create(ctx, intCertReq)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	// create fake metadata certificate request
+	metaCertReq := &verifyv1beta1.CertificateRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "meta",
+			Namespace: "default",
+		},
+		Spec: verifyv1beta1.CertificateRequestSpec{
+			CountryCode:      "GB",
+			CommonName:       "MetadataSigngingCert",
+			ExpiryMonths:     12,
+			Location:         "London",
+			Organization:     "Cab",
+			OrganizationUnit: "GDS",
+			CACert:           false,
+			CertificateAuthority: &verifyv1beta1.CertificateAuthoritySpec{
+				SecretName: "int",
+				Namespace:  "cert-system",
+			},
+		},
+	}
+	err = c.Create(ctx, metaCertReq)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	// The Reconcile function should have been called twice by now
+	g.Eventually(reconcileCertRequestCallCount, timeout).Should(Equal(3))
+	g.Consistently(reconcileCertRequestCallCount, timeout).Should(Equal(3))
+
+	// expect a secret to exist for metadata cert req
+	g.Eventually(func() error {
+		name := types.NamespacedName{
+			Name:      rootCertReq.ObjectMeta.Name,
+			Namespace: rootCertReq.ObjectMeta.Namespace,
+		}
+		s := &corev1.Secret{}
+		return c.Get(ctx, name, s)
+	}).Should(Succeed())
+	// expect a secret to exist for metadata cert req
+	g.Eventually(func() error {
+		name := types.NamespacedName{
+			Name:      intCertReq.ObjectMeta.Name,
+			Namespace: intCertReq.ObjectMeta.Namespace,
+		}
+		s := &corev1.Secret{}
+		return c.Get(ctx, name, s)
+	}).Should(Succeed())
+	// expect a secret to exist for metadata cert req
+	g.Eventually(func() error {
+		name := types.NamespacedName{
+			Name:      metaCertReq.ObjectMeta.Name,
+			Namespace: metaCertReq.ObjectMeta.Namespace,
+		}
+		s := &corev1.Secret{}
+		return c.Get(ctx, name, s)
+	}).Should(Succeed())
 
 	// flesh out a metadata object
 	metadataResource := &verifyv1beta1.Metadata{
@@ -113,8 +206,8 @@ func TestReconcile(t *testing.T) {
 				ContactEmail:     "jeff@jeff.com",
 			},
 			CertificateAuthority: verifyv1beta1.CertificateAuthoritySpec{
-				SecretName: "root",
-				Namespace:  "cert-system",
+				SecretName: "meta",
+				Namespace:  "default",
 			},
 		},
 	}
@@ -132,12 +225,16 @@ func TestReconcile(t *testing.T) {
 		"deployment": metadataResource.ObjectMeta.Name,
 	}
 
-	// The Reconcile function should have been called exactly once
-	g.Eventually(reconcileCallCount, timeout).Should(Equal(1))
-	g.Consistently(reconcileCallCount, timeout).Should(Equal(1))
+	// The Reconcile function should have been called exactly once so far
+	g.Eventually(reconcileMetadataCallCount, timeout).Should(Equal(1))
+	g.Consistently(reconcileMetadataCallCount, timeout).Should(Equal(1))
 
-	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called once so far to create the SAML signing keypair
-	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(1))
+	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called:
+	// * once to create the self signed Root CA's keypair
+	// * once to create the Int CA's keypair
+	// * once to create the Metadata Cert's keypair
+	// * once to create the self signed SAML cert's keypair
+	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(4))
 
 	// We expect a Secret to be created
 	secretResource := &corev1.Secret{}
@@ -165,13 +262,16 @@ func TestReconcile(t *testing.T) {
 	g.Eventually(getSecretData("hsmUser")).Should(Equal([]byte("hsm-user")))
 	g.Eventually(getSecretData("hsmPassword")).Should(Equal([]byte("hsm-pass")))
 	g.Eventually(getSecretData("hsmIP")).Should(Equal([]byte("10.0.10.100")))
-	g.Eventually(getSecretData("metadataSigningCert")).Should(Equal(fakeCert))
+	g.Eventually(getSecretData("metadataSigningCert")).Should(Equal(fakeMetadataCert))
 	g.Eventually(getSecretData("metadataSigningTruststore")).ShouldNot(Equal([]byte{}))
-	g.Eventually(getSecretData("metadataSigningKeyLabel")).Should(Equal([]byte("meta-root-label")))
-	g.Eventually(getSecretData("samlSigningCert")).Should(Equal(fakeCert))
+	g.Eventually(getSecretData("metadataSigningKeyLabel")).Should(Equal([]byte("default-meta")))
+	g.Eventually(getSecretData("samlSigningCert")).Should(Equal(fakeSamlCert))
 	g.Eventually(getSecretData("samlSigningTruststore")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("samlSigningKeyLabel")).Should(Equal([]byte("default-foo-saml")))
 	g.Eventually(getSecretData("hsmCustomerCA.crt")).Should(Equal(fakeCustomerCA))
+	g.Eventually(getSecretData("metadataCATruststore")).ShouldNot(Equal([]byte{}))
+	g.Eventually(getSecretData("metadataCATruststoreBase64")).ShouldNot(Equal([]byte{}))
+	g.Eventually(getSecretData("metadataCACerts")).Should(Equal(bytes.Join([][]byte{fakeRootCert, fakeIntCert, fakeMetadataCert}, []byte("\n"))))
 	// TODO: add the rest of the Secret fields here...
 
 	// We expect a an nginx Deployment to be created with the same name
@@ -206,7 +306,7 @@ func TestReconcile(t *testing.T) {
 	g.Expect(c.Update(ctx, metadataResourceUpdated)).To(Succeed())
 
 	// After updating the Metadata Reconcile should have been called again
-	g.Eventually(reconcileCallCount, timeout).Should(Equal(2))
+	g.Eventually(reconcileMetadataCallCount, timeout).Should(Equal(2))
 
 	// We expect the Secret data field(s) to get updated
 	g.Eventually(getSecretData("postURL")).Should(Equal([]byte("https://new-post-url/")))
@@ -226,12 +326,14 @@ func TestReconcile(t *testing.T) {
 	g.Expect(c.Update(ctx, metadataResourceUpdated)).To(Succeed())
 
 	// After updating the Metadata Reconcile should have been called again
-	g.Eventually(reconcileCallCount, timeout).Should(Equal(3))
+	g.Eventually(reconcileMetadataCallCount, timeout).Should(Equal(3))
 
-	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called only
-	// twice in total (once initially, once after first update, NOT after second update)
-	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(2))
+	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called:
+	// * 4x earlier (see above)
+	// * 2x after update (signingCert and samlCert)
+	// * 0x after second update?
+	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(5))
 
 	// We do not expecyt the Reconcile func to have been called more than 3 times (create, update, update)
-	g.Consistently(reconcileCallCount, timeout).Should(Equal(3))
+	g.Consistently(reconcileMetadataCallCount, timeout).Should(Equal(3))
 }
