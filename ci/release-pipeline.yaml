@@ -104,7 +104,7 @@ spec:
       serial: true
       plan:
 
-      - aggregate:
+      - in_parallel:
         - get: src
           passed: ["build"]
           trigger: true
