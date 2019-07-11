@@ -2,6 +2,9 @@ global:
   cluster:
     name:
     domain:
+  cloudHsm:
+    enabled: true
+    ip: "127.0.0.1"
 
 vmc:
   image:

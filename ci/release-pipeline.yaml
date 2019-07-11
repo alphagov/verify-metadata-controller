@@ -48,7 +48,7 @@ spec:
       type: registry-image
       source:
         repository: "govsvc/concourse-github-resource"
-        tag: "v0.0.1"
+        tag: "v0.0.3"
 
     - name: harbor
       type: docker-image
@@ -104,7 +104,7 @@ spec:
       serial: true
       plan:
 
-      - in_parallel:
+      - aggregate:
         - get: src
           passed: ["build"]
           trigger: true
