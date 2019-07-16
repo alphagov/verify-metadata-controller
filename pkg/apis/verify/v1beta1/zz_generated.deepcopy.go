@@ -219,7 +219,11 @@ func (in *MetadataSpec) DeepCopyInto(out *MetadataSpec) {
 	*out = *in
 	out.Data = in.Data
 	out.CertificateAuthority = in.CertificateAuthority
-	in.SAMLSigningCertificate.DeepCopyInto(&out.SAMLSigningCertificate)
+	if in.SAMLSigningCertificate != nil {
+		in, out := &in.SAMLSigningCertificate, &out.SAMLSigningCertificate
+		*out = new(CertificateRequestSpec)
+		(*in).DeepCopyInto(*out)
+	}
 	return
 }
 

@@ -7,7 +7,7 @@ Kubernetes Custom Resource and Controller for generating and signing SAML metada
 ## Requirements
 
 - docker
-- [kubebuilder](https://book.kubebuilder.io/getting_started/installation_and_setup.html)
+- [kubebuilder](https://book.kubebuilder.io/quick-start.html#installation)
 - [kustomize](https://github.com/kubernetes-sigs/kustomize/blob/master/docs/INSTALL.md)
 
 ## Development

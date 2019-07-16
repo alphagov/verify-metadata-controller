@@ -10,6 +10,7 @@ type Credentials struct {
 type GenerateMetadataRequest struct {
 	MetadataSigningCert     []byte
 	SAMLSigningCert         []byte
+	SAMLEncryptionCert      []byte
 	MetadataSigningKeyLabel string
 	SamlSigningKeyLabel     string
 	Type                    string
