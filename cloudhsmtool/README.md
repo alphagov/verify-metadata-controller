@@ -75,3 +75,22 @@ This CLI emits a PEM-encoded X509 Certificate to `stdout`.
 | -parent-cert-base64 | PEM encoded parent certificate, only for chained cert          | true     |                |
 | -parent-key-label   | key label of parent RSA key, only for chained cert             | true     |                |
 | -ca-cert            | Describes this certificate as a CA cert, only for chained cert | false    | false          |
+
+## Running cloudhsmtool using docker
+
+Build the docker image using the command:
+
+```
+docker build -t cloudhsmtool:docker .
+```
+
+Start the container with:
+
+```
+HSM_USER=<user> HSM_PASSWORD=<password> ./launch-docker.bash 
+```
+
+Where `<user>` and `<password>` are appropriate values.
+
+Once in the container you can use the alias `hsmtool` followed
+by your chosen command and options.

@@ -1,0 +1,5 @@
+source 'http://rubygems.org'
+gem 'cucumber', '3.1.2'
+gem 'gherkin', '5.1.0'
+gem 'rspec-expectations'
+gem 'nokogiri', '~> 1.6', '>= 1.6.8'
