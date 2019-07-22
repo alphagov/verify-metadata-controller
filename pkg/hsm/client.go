@@ -16,6 +16,7 @@ type GenerateMetadataRequest struct {
 	Type                    string
 	HSMCreds                Credentials
 	Data                    MetadataRequestData
+	HSMSAMLSigning          bool
 }
 
 type MetadataRequestData struct {

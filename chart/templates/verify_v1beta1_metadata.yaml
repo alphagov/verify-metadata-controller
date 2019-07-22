@@ -48,8 +48,6 @@ spec:
                   type: string
                 contactSurname:
                   type: string
-                encryptionCertificate:
-                  type: string
                 entityID:
                   type: string
                 orgDisplayName:
@@ -62,7 +60,9 @@ spec:
                   type: string
                 redirectURL:
                   type: string
-                signingCertificate:
+                samlSigningCertificate:
+                  type: string
+                samlencryptionCertificate:
                   type: string
               type: object
             enabled:

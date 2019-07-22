@@ -63,7 +63,7 @@ func (c *Client) CreateSelfSignedCert(label string, hsmCreds hsm.Credentials, re
 	)
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate rsa key for %s: %s", label, err)
+		return nil, fmt.Errorf("failed to create self-signed cert for %s: %s", label, err)
 	}
 	return out, nil
 }
@@ -96,7 +96,7 @@ func (c *Client) CreateChainedCert(label string, hsmCreds hsm.Credentials, req h
 	)
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate rsa key for %s: %s", label, err)
+		return nil, fmt.Errorf("failed to create chained cert for %s: %s", label, err)
 	}
 	return out, nil
 }
@@ -141,16 +141,24 @@ func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (s
 		"samlSigningKeyLabel", request.SamlSigningKeyLabel,
 		"samlEncryptionCert", request.SAMLEncryptionCert,
 	)
+
+	var samlSigningOption string
+	if request.HSMSAMLSigning {
+		samlSigningOption = "--hsm-saml-signing-cert-file"
+	} else {
+		samlSigningOption = "--supplied-saml-encryption-cert-file"
+	}
+
 	cmd := exec.Command("/mdgen/build/install/mdgen/bin/mdgen",
 		request.Type,
 		specFileName,
-		tmpSAMLSigningCertPath,
 		tmpMetadataSigningCertPath,
 		"--output", tmpMetadataOutputPath,
 		"--algorithm", "rsa",
 		"--hsm-metadata-signing-label", request.MetadataSigningKeyLabel,
 		"--hsm-saml-signing-label", request.SamlSigningKeyLabel,
-		"--saml-encryption-cert", tmpSAMLEncryptionCertPath,
+		samlSigningOption, tmpSAMLSigningCertPath,
+		"--supplied-saml-encryption-cert-file", tmpSAMLEncryptionCertPath,
 	)
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("HSM_USER=%s", request.HSMCreds.User),

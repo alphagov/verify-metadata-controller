@@ -9,8 +9,20 @@ Kubernetes Custom Resource and Controller for generating and signing SAML metada
 - docker
 - [kubebuilder](https://book.kubebuilder.io/quick-start.html#installation)
 - [kustomize](https://github.com/kubernetes-sigs/kustomize/blob/master/docs/INSTALL.md)
+- [gds-cli](https://github.com/alphagov/gds-cli)
 
 ## Development
+
+Use `gds-cli` to update `kubeconfig` to refer to the target cluster:    
+
+`gds-cli <cluster> update-kubeconfig`
+
+This will generate a `kubeconfig` in `~/.gds/<cluster>-<cluster>.kubeconfig`
+
+Export this config:
+`exportKUBECONFIG=~/.gds/<cluster>-<cluster>.kubeconfig`
+---
+To build and deploy to a development environment:
 
 ```
 eval $(minikibe docker-env)     # point local docker commands at the engine in minikube 

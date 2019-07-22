@@ -169,7 +169,7 @@ func (r *ReconcileMetadata) getCACerts(ctx context.Context, name, namespace stri
 func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.Metadata, metadataSigningSecret *corev1.Secret, ca *verifyv1beta1.CertificateAuthoritySpec) (map[string][]byte, error) {
 
 	if instance.Spec.SAMLSigningCertificate == nil {
-		if instance.Spec.Data.EncryptionCertificate == "" || instance.Spec.Data.SigningCertificate == "" {
+		if instance.Spec.Data.SamlEncryptionCertificate == "" || instance.Spec.Data.SamlSigningCertificate == "" {
 			return nil, fmt.Errorf("encryption and signing certs are required if CertificateSigningRequest is absent")
 		}
 	}
@@ -251,8 +251,8 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		}
 		samlEncryptionCert = samlSigningCert
 	} else {
-		samlSigningCert = []byte(instance.Spec.Data.SigningCertificate)
-		samlEncryptionCert = []byte(instance.Spec.Data.EncryptionCertificate)
+		samlSigningCert = []byte(instance.Spec.Data.SamlSigningCertificate)
+		samlEncryptionCert = []byte(instance.Spec.Data.SamlEncryptionCertificate)
 	}
 
 	// TODO do we need this truststore? If so, do we need an encryption one?
@@ -268,6 +268,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		SAMLEncryptionCert:      samlEncryptionCert,
 		MetadataSigningKeyLabel: string(metadataSigningKeyLabel),
 		SamlSigningKeyLabel:     string(samlSigningKeyLabel),
+		HSMSAMLSigning:          signingCertFromCertRequest,
 		HSMCreds: hsm.Credentials{
 			IP:         string(metadataHSMIP),
 			User:       string(metadataHSMUser),
