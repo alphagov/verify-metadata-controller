@@ -34,7 +34,7 @@ type MetadataSigningSpec struct {
 	ContactSurname            string `json:"contactSurname,omitempty"`
 	ContactEmail              string `json:"contactEmail,omitempty"`
 	SamlSigningCertificate    string `json:"samlSigningCertificate,omitempty"`
-	SamlEncryptionCertificate string `json:"samlencryptionCertificate,omitempty"`
+	SamlEncryptionCertificate string `json:"samlEncryptionCertificate,omitempty"`
 }
 
 // MetadataSpec defines the desired state of Metadata
@@ -46,6 +46,7 @@ type MetadataSpec struct {
 	Enabled                bool                     `json:"enabled,omitempty"`
 	CertificateAuthority   CertificateAuthoritySpec `json:"certificateAuthority"`
 	SAMLSigningCertificate *CertificateRequestSpec  `json:"samlSigningCertRequest,omitempty"`
+	PublishingPath         string                   `json:"publishingPath,omitempty"`
 }
 
 // MetadataStatus defines the observed state of Metadata

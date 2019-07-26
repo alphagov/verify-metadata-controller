@@ -60,14 +60,16 @@ spec:
                   type: string
                 redirectURL:
                   type: string
-                samlSigningCertificate:
+                samlEncryptionCertificate:
                   type: string
-                samlencryptionCertificate:
+                samlSigningCertificate:
                   type: string
               type: object
             enabled:
               type: boolean
             id:
+              type: string
+            publishingPath:
               type: string
             samlSigningCertRequest:
               properties:

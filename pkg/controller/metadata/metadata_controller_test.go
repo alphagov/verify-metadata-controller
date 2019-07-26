@@ -231,6 +231,7 @@ func TestReconcile(t *testing.T) {
 	g.Eventually(getSecretData("metadataCATruststore")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("metadataCATruststoreBase64")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("metadataCACerts")).Should(Equal(bytes.Join([][]byte{fakeRootCert, fakeIntCert, fakeMetadataCert}, []byte("\n"))))
+	g.Eventually(getSecretData("publishingPath")).Should(Equal([]byte("metadata.xml")))
 	// TODO: add the rest of the Secret fields here...
 
 	// We expect a an nginx Deployment to be created with the same name
@@ -375,6 +376,7 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 				SecretName: "meta",
 				Namespace:  "default",
 			},
+			PublishingPath: "ConnectorMetadata",
 		},
 	}
 
@@ -419,6 +421,7 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 	g.Eventually(getSecretData("metadataSigningCert")).Should(Equal(fakeMetadataCert))
 	g.Eventually(getSecretData("metadataSigningTruststore")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("metadataSigningKeyLabel")).Should(Equal([]byte("default-meta")))
+	g.Eventually(getSecretData("publishingPath")).Should(Equal([]byte("ConnectorMetadata")))
 	g.Eventually(getSecretData("samlSigningCert")).Should(Equal(suppliedSigningCert))
 	g.Eventually(getSecretData("samlSigningTruststore")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("samlSigningKeyLabel")).Should(Equal([]byte("default-metadata-from-supplied-certs-saml")))

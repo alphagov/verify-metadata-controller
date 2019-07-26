@@ -247,7 +247,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		}
 		samlSigningCert, err = r.hsm.CreateSelfSignedCert(samlSigningKeyLabel, samlSigningCreds, samlSigningCertReq)
 		if err != nil {
-			return nil, fmt.Errorf("CreateChainedCert(%s): %s", samlSigningKeyLabel, err)
+			return nil, fmt.Errorf("CreateSelfSignedCert(%s): %s", samlSigningKeyLabel, err)
 		}
 		samlEncryptionCert = samlSigningCert
 	} else {
@@ -313,6 +313,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"metadataCATruststore":              []byte(metadataCATruststore),
 		"metadataCATruststoreBase64":        []byte(base64.StdEncoding.EncodeToString(metadataCATruststore)),
 		"metadataCATruststorePassword":      []byte(metadataCATruststorePassword),
+		"publishingPath":                    []byte(getPublishingPath(instance)),
 		"samlSigningCert":                   []byte(samlSigningCert),
 		"samlSigningCertBase64":             []byte(base64.StdEncoding.EncodeToString(samlSigningCert)),
 		"samlSigningTruststore":             []byte(samlSigningTruststore),
@@ -477,7 +478,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "data",
-									MountPath: "/usr/share/nginx/html/metadata.xml",
+									MountPath: fmt.Sprintf("/usr/share/nginx/html/%s", getPublishingPath(instance)),
 									SubPath:   metadataXMLKey,
 								},
 							},
@@ -650,4 +651,12 @@ func generateTruststore(cert []byte, alias, storePass string) ([]byte, error) {
 		return nil, err
 	}
 	return b, nil
+}
+
+func getPublishingPath(instance *verifyv1beta1.Metadata) string {
+	if instance.Spec.PublishingPath != "" {
+		return instance.Spec.PublishingPath
+	} else {
+		return metadataXMLKey
+	}
 }
