@@ -146,7 +146,7 @@ func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (s
 	if request.HSMSAMLSigning {
 		samlSigningOption = "--hsm-saml-signing-cert-file"
 	} else {
-		samlSigningOption = "--supplied-saml-encryption-cert-file"
+		samlSigningOption = "--supplied-saml-signing-cert-file"
 	}
 
 	cmd := exec.Command("/mdgen/build/install/mdgen/bin/mdgen",

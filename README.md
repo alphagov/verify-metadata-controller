@@ -20,7 +20,7 @@ Use `gds-cli` to update `kubeconfig` to refer to the target cluster:
 This will generate a `kubeconfig` in `~/.gds/<cluster>-<cluster>.kubeconfig`
 
 Export this config:
-`exportKUBECONFIG=~/.gds/<cluster>-<cluster>.kubeconfig`
+`export KUBECONFIG=~/.gds/<cluster>-<cluster>.kubeconfig`
 ---
 To build and deploy to a development environment:
 
