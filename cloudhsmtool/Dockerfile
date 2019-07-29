@@ -34,5 +34,5 @@ RUN /cloudhsmtool/gradlew distZip
 COPY ./sandbox-customerCA.crt /opt/cloudhsm/etc/customerCA.crt
 WORKDIR /opt
 RUN unzip /cloudhsmtool/build/distributions/cloudhsmtool.zip
-RUN echo "alias hsmtool=\"java -cp \"/opt/cloudhsmtool/lib/*:/opt/cloudhsm/java/*\" uk.gov.ida.cloudhsmtool.CloudHSMTool\"" >> /root/.bashrc
+RUN echo "alias hsmtool=\"java -cp \"/opt/cloudhsmtool/lib/*:/opt/cloudhsm/java/*\" uk.gov.ida.cloudhsmtool.CloudHSMTool $@\"" >> /root/.bashrc
 CMD /script.bash

@@ -90,7 +90,8 @@ Start the container with:
 HSM_USER=<user> HSM_PASSWORD=<password> ./launch-docker.bash 
 ```
 
-Where `<user>` and `<password>` are appropriate values.
+Where `<user>` and `<password>` are appropriate values.  Ask a
+member of the helping users team if you need these values.
 
 Once in the container you can use the alias `hsmtool` followed
 by your chosen command and options.
