@@ -10,7 +10,7 @@ Feature: The java app
 
   Scenario Outline: The proxy-node use case
     Produce signed metadata for the proxy node using a cert supplied by the verify-metadata-controller
-    When I run the java executable with some appropriate parameters
+    When I run the java executable with correct parameters for the proxy node
     Then I see that the application outputs a file
     And the file contains the supplied saml signing certificate: "<cert>"
     And the file contains the supplied saml encryption certificate: "<cert>"

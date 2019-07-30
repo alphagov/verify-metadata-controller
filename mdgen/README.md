@@ -1,6 +1,6 @@
 # Running mdgen
 
-mdgen relies on the aws hsm client which won't run on MacOS.
+mdgen relies on the aws HSM client which won't run on MacOS.
 To get around this we can use docker to provide a Linux system on which
 to install the client.
 

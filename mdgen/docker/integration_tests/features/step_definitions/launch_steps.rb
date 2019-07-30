@@ -22,7 +22,7 @@ When("I run the java executable with no parameters") do
   @last_output = `mdgen/bin/mdgen 2>&1`
 end
 
-When("I run the java executable with some appropriate parameters") do
+When("I run the java executable with correct parameters for the proxy node") do
   @last_output = run_app("proxy", "rsa")
 end
 

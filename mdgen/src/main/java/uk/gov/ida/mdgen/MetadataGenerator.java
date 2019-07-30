@@ -84,7 +84,7 @@ public class MetadataGenerator implements Callable<Void> {
     private File metadataSigningCertFile;
 
     @CommandLine.Option(names = "--hsm-metadata-signing-label", description = "HSM Metadata key label", required = true)
-    private String hsmMetadataKeyLabel;
+    private String hsmMetadataSigningKeyLabel;
 
     @CommandLine.Option(names = "--output", description = "Output metadata file")
     private File outputFile;
@@ -93,7 +93,7 @@ public class MetadataGenerator implements Callable<Void> {
     private SigningAlgoType signingAlgo = SigningAlgoType.rsa;
 
     @CommandLine.Option(names = "--hsm-saml-signing-label", description = "HSM Signing key label (required for self-signed SAML Signing cert from HSM)")
-    private String hsmSigningKeyLabel;
+    private String hsmSamlSigningKeyLabel;
 
     @ArgGroup(exclusive = true, multiplicity = "1")
     SamlSigningCert samlSigningCert;
@@ -104,6 +104,14 @@ public class MetadataGenerator implements Callable<Void> {
 
         @CommandLine.Option(names = "--supplied-saml-signing-cert-file", description = "Public X509 cert for saml signing certificate supplied manually")
         private static File manuallySuppliedSamlSigningCert;
+
+        private static X509Certificate asCert() throws CertificateException {
+            return metadataControllerSuppliedSamlSigningCert != null ?
+                    X509Support.decodeCertificate(metadataControllerSuppliedSamlSigningCert)
+                    :
+                    X509Support.decodeCertificate(manuallySuppliedSamlSigningCert)
+            ;
+        }
     }
 
     @CommandLine.Option(names = "--supplied-saml-encryption-cert-file", description = "Public X509 cert for saml encryption certificate supplied manually")
@@ -149,7 +157,7 @@ public class MetadataGenerator implements Callable<Void> {
             System.exit(1);
         }
         X509Certificate metadataSigningCert = decodeCertificate(metadataSigningCertFile);
-        metadataSigningCredential = getSigningCredentialFromCloudHSM(metadataSigningCert, hsmMetadataKeyLabel);
+        metadataSigningCredential = getSigningCredentialFromCloudHSM(metadataSigningCert, hsmMetadataSigningKeyLabel);
     }
 
     private void setupSigningAlgo() {
@@ -240,22 +248,30 @@ public class MetadataGenerator implements Callable<Void> {
     }
 
     private void addSamlSigningKeyDescriptor(SSODescriptor spSso) throws Exception {
-        if ( SamlSigningCert.metadataControllerSuppliedSamlSigningCert != null ) {
-            samlSigningCredential = getSigningCredentialFromCloudHSM(decodeCertificate(SamlSigningCert.metadataControllerSuppliedSamlSigningCert), hsmSigningKeyLabel);
+        if (samlSigningCertIsFromMetadataController()) {
+            samlSigningCredential = getSigningCredentialFromCloudHSM(SamlSigningCert.asCert(), hsmSamlSigningKeyLabel);
         } else {
-            samlSigningCredential = new BasicX509Credential(decodeCertificate(SamlSigningCert.manuallySuppliedSamlSigningCert));
+            samlSigningCredential = new BasicX509Credential(SamlSigningCert.asCert());
         }
         spSso.getKeyDescriptors().add(buildKeyDescriptor(UsageType.SIGNING, samlSigningCredential));
     }
 
+    private boolean samlSigningCertIsFromMetadataController() {
+        return SamlSigningCert.metadataControllerSuppliedSamlSigningCert != null;
+    }
+
     private void addSamlEncryptionDescriptor(SSODescriptor spSso) throws Exception {
         BasicX509Credential samlEncCredential;
-        if (manuallySuppliedSamlEncryptionsCert != null) {
+        if (samlEncryptionCertIsFromHub()) {
             samlEncCredential = new BasicX509Credential(decodeCertificate(manuallySuppliedSamlEncryptionsCert));
         } else {
             samlEncCredential = samlSigningCredential;
         }
         spSso.getKeyDescriptors().add(buildKeyDescriptor(UsageType.ENCRYPTION, samlEncCredential));
+    }
+
+    private boolean samlEncryptionCertIsFromHub() {
+        return manuallySuppliedSamlEncryptionsCert != null;
     }
 
     private X509Certificate decodeCertificate(File certFile) throws CertificateException {
