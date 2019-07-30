@@ -13,7 +13,7 @@ Kubernetes Custom Resource and Controller for generating and signing SAML metada
 ## Development
 
 ```
-eval $(minikibe docker-env)     # point local docker commands at the engine in minikube 
+eval $(minikube docker-env)     # point local docker commands at the engine in minikube 
 make                            # regenerate controller/api after changes
 make docker-build               # build the controller image
 make deploy                     # install controller with kubectl 

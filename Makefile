@@ -8,7 +8,7 @@ all: manifests test manager
 
 # Run tests
 test: generate fmt vet manifests
-	go test ./pkg/... ./cmd/... -coverprofile cover.out
+	go test ./src/... ./cmd/... -coverprofile cover.out
 
 # Build manager binary
 manager: generate fmt
@@ -35,16 +35,16 @@ manifests:
 
 # Run go fmt against code
 fmt:
-	go fmt ./pkg/... ./cmd/...
+	go fmt ./src/... ./cmd/...
 
 # Run go vet against code
 vet:
-	go vet ./pkg/... ./cmd/...
+	go vet ./src/... ./cmd/...
 
 # Generate code
 generate:
-	go generate ./pkg/... ./cmd/...
-	counterfeiter pkg/hsm/ Client
+	go generate ./src/... ./cmd/...
+	counterfeiter src/hsm/ Client
 
 # Build the docker image
 docker-build:

@@ -2,13 +2,14 @@ package awscloudhsm
 
 import (
 	"fmt"
-	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
-	"github.com/labstack/gommon/log"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
+	"github.com/labstack/gommon/log"
+	"gopkg.in/yaml.v2"
 )
 
 var _ hsm.Client = &Client{}
@@ -144,6 +145,7 @@ func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (s
 		"--algorithm", "rsa",
 		"--hsm-metadata-signing-label", request.MetadataSigningKeyLabel,
 		"--hsm-saml-signing-label", request.SamlSigningKeyLabel,
+		"--validityDays", request.Data.ValidityDays
 	)
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("HSM_USER=%s", request.HSMCreds.User),

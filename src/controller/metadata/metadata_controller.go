@@ -26,8 +26,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
-	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
+	verifyv1beta1 "../../apis/verify/v1beta1"
+	"../../hsm"
 	"github.com/mitchellh/hashstructure"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -265,6 +265,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 			ContactGivenName: instance.Spec.Data.ContactGivenName,
 			ContactSurname:   instance.Spec.Data.ContactSurname,
 			ContactEmail:     instance.Spec.Data.ContactEmail,
+			ValidityDays:     instance.Spec.Data.ValidityDays,
 		},
 	}
 	signedMetadata, err := r.hsm.GenerateAndSignMetadata(metadataRequest)

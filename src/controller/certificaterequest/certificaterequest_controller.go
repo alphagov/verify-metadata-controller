@@ -20,8 +20,8 @@ import (
 	"context"
 	"fmt"
 
-	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
-	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
+	verifyv1beta1 "../../apis/verify/v1beta1"
+	"../../hsm"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
