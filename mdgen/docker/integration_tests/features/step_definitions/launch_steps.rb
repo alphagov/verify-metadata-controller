@@ -53,11 +53,11 @@ end
 
 private
 def run_app(node_type, algorithm)
-  `java -classpath '/opt/cloudhsm/java/*:mdgen/lib/*' uk.gov.ida.mdgen.MetadataGenerator #{node_type} ../test/#{node_type}.yml ../test/test-metadata-signing-cert.pem --hsm-saml-signing-cert-file ../test/test-hsm-generated-saml-signing-cert.pem --hsm-saml-signing-label this-is-a-cloudhsmtool-thing --hsm-metadata-signing-label this-is-a-cloudhsmtool-thing --output ./metadata.xml 2>&1`
+  `java -classpath '/opt/cloudhsm/java/*:mdgen/lib/*' uk.gov.ida.mdgen.MetadataGenerator #{node_type} ../test/#{node_type}.yml ../test/test-metadata-signing-cert.pem --hsm-saml-signing-cert-file ../test/test-hsm-generated-saml-signing-cert.pem --hsm-saml-signing-key-label this-is-a-cloudhsmtool-thing --hsm-metadata-signing-key-label this-is-a-cloudhsmtool-thing --output ./metadata.xml 2>&1`
 end
 
 def run_app_with_certs(node_type, algorithm, signing_cert, encryption_cert)
-  `java -classpath '/opt/cloudhsm/java/*:mdgen/lib/*' uk.gov.ida.mdgen.MetadataGenerator #{node_type} ../test/#{node_type}.yml ../test/test-metadata-signing-cert.pem --supplied-saml-signing-cert-file ../test/#{signing_cert} --supplied-saml-encryption-cert-file ../test/#{encryption_cert} --algorithm #{algorithm} --hsm-metadata-signing-label this-is-a-cloudhsmtool-thing --output ./metadata.xml 2>&1`
+  `java -classpath '/opt/cloudhsm/java/*:mdgen/lib/*' uk.gov.ida.mdgen.MetadataGenerator #{node_type} ../test/#{node_type}.yml ../test/test-metadata-signing-cert.pem --supplied-saml-signing-cert-file ../test/#{signing_cert} --supplied-saml-encryption-cert-file ../test/#{encryption_cert} --algorithm #{algorithm} --hsm-metadata-signing-key-label this-is-a-cloudhsmtool-thing --output ./metadata.xml 2>&1`
 end
 
 def stripped_pem(pem_file)
