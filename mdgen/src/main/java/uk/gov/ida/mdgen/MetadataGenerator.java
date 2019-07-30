@@ -94,6 +94,10 @@ public class MetadataGenerator implements Callable<Void> {
     @CommandLine.Option(names = "--hsm-metadata-signing-label", description = "HSM Metadata key label")
     private String hsmMetadataKeyLabel = "private_key";
 
+    @CommandLine.Option(names = "--validityDays", description = "How many days the metadata is valid for (default 30 days)")
+    private Integer validityDays = 30;
+
+
     public static void main(String[] args) throws InitializationException {
         InitializationService.initialize();
         CommandLine.call(new MetadataGenerator(), args);
@@ -160,7 +164,7 @@ public class MetadataGenerator implements Callable<Void> {
         String xml = renderTemplate(nodeType.toString() + "_template.xml.mustache", yamlMap);
         EntityDescriptor entityDescriptor = ObjectUtils.unmarshall(new ByteArrayInputStream(xml.getBytes()), EntityDescriptor.class);
         entityDescriptor.setID(UUID.randomUUID().toString());
-        entityDescriptor.setValidUntil(DateTime.now().plusDays(365));
+        entityDescriptor.setValidUntil(DateTime.now().plusDays(validityDays));
         updateSsoDescriptor(entityDescriptor);
         sign(entityDescriptor);
         return entityDescriptor;
