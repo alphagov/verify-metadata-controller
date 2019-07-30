@@ -109,6 +109,10 @@ public class MetadataGenerator implements Callable<Void> {
     @CommandLine.Option(names = "--supplied-saml-encryption-cert-file", description = "Public X509 cert for saml encryption certificate supplied manually")
     private File manuallySuppliedSamlEncryptionsCert;
 
+    @CommandLine.Option(names = "--validityDays", description = "How many days the metadata is valid for (default 30 days)")
+    private Integer validityDays = 30;
+
+
     public static void main(String[] args) throws InitializationException {
         InitializationService.initialize();
         CommandLine.call(new MetadataGenerator(), args);
@@ -192,8 +196,8 @@ public class MetadataGenerator implements Callable<Void> {
         String xml = renderTemplate(nodeType.toString() + "_template.xml.mustache", yamlMap);
         EntityDescriptor entityDescriptor = ObjectUtils.unmarshall(new ByteArrayInputStream(xml.getBytes()), EntityDescriptor.class);
         entityDescriptor.setID(UUID.randomUUID().toString());
-        entityDescriptor.setValidUntil(DateTime.now().plusDays(365));
-        updateSsoDescriptors(entityDescriptor);
+        entityDescriptor.setValidUntil(DateTime.now().plusDays(validityDays));
+        updateSsoDescriptor(entityDescriptor);
         sign(entityDescriptor);
         return entityDescriptor;
     }
