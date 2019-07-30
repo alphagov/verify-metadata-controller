@@ -3,3 +3,9 @@
 *.iml
 
 build/
+out/
+.DS_Store
+
+docker/integration_tests/mdgen/
+docker/integration_tests/metadata.xml
+docker/test
