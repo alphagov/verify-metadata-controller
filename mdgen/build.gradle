@@ -16,7 +16,7 @@ repositories {
 }
 
 dependencies {
-  implementation 'info.picocli:picocli:4.0.1',
+  implementation 'info.picocli:picocli:3.9.3',
     'org.opensaml:opensaml-core:3.4.0',
     'org.opensaml:opensaml-saml-api:3.4.0',
     'org.opensaml:opensaml-saml-impl:3.4.0',
@@ -33,13 +33,4 @@ dependencies {
       implementation name: 'log4j-api-2.8'
       implementation name: 'log4j-core-2.8'
     }
-
-  testCompile 'org.assertj:assertj-core:3.9.1',
-    'junit:junit:4.12'
-
-}
-
-task runDockerTests(dependsOn: build, type: Exec) {
-    workingDir "$projectDir/docker"
-    commandLine './launch-docker.bash'
 }
