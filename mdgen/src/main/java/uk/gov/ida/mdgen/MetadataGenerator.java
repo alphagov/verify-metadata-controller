@@ -197,7 +197,7 @@ public class MetadataGenerator implements Callable<Void> {
         EntityDescriptor entityDescriptor = ObjectUtils.unmarshall(new ByteArrayInputStream(xml.getBytes()), EntityDescriptor.class);
         entityDescriptor.setID(UUID.randomUUID().toString());
         entityDescriptor.setValidUntil(DateTime.now().plusDays(validityDays));
-        updateSsoDescriptor(entityDescriptor);
+        updateSsoDescriptors(entityDescriptor);
         sign(entityDescriptor);
         return entityDescriptor;
     }
