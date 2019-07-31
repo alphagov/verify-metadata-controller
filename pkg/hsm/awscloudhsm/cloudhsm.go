@@ -3,13 +3,15 @@ package awscloudhsm
 import (
 	"fmt"
 	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
-	"github.com/labstack/gommon/log"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
+
+var log = logf.Log.WithName("cloudhsm")
 
 var _ hsm.Client = &Client{}
 
