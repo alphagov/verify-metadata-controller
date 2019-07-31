@@ -19,7 +19,6 @@ package certificaterequest
 import (
 	"context"
 	"fmt"
-
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
 	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
 	corev1 "k8s.io/api/core/v1"
@@ -93,10 +92,10 @@ type ReconcileCertificateRequest struct {
 // +kubebuilder:rbac:groups=verify.gov.uk,resources=certificaterequests/status,verbs=get;update;patch
 func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	ctx := context.Background()
-	// Fetch the CertificateRequest instance
-	instance := &verifyv1beta1.CertificateRequest{}
-	err := r.Get(ctx, request.NamespacedName, instance)
 	reconcileResult := reconcile.Result{}
+	// Fetch the CertificateRequest certReconcileRequest
+	certReconcileRequest := &verifyv1beta1.CertificateRequest{}
+	err := r.Get(ctx, request.NamespacedName, certReconcileRequest)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
@@ -107,16 +106,16 @@ func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reco
 		return reconcileResult, err
 	}
 
-	keyLabel := fmt.Sprintf("%s-%s", instance.ObjectMeta.Namespace, instance.ObjectMeta.Name)
+	keyLabel := fmt.Sprintf("%s-%s", certReconcileRequest.ObjectMeta.Namespace, certReconcileRequest.ObjectMeta.Name)
 
 	creds, err := hsm.GetCredentials()
 	if err != nil {
 		return reconcileResult, err
 	}
 
-	// find or create certifcate Secret
+	// find or create certificate Secret
 	foundSecret := &corev1.Secret{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, foundSecret)
+	err = r.Get(context.TODO(), types.NamespacedName{Name: certReconcileRequest.Name, Namespace: certReconcileRequest.Namespace}, foundSecret)
 	if err != nil && errors.IsNotFound(err) {
 		_, err = r.hsm.FindOrCreateRSAKeyPair(keyLabel, creds)
 		if err != nil {
@@ -124,23 +123,23 @@ func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reco
 		}
 
 		req := hsm.CertRequest{
-			CountryCode:      instance.Spec.CountryCode,
-			CommonName:       instance.Spec.CommonName,
-			ExpiryMonths:     instance.Spec.ExpiryMonths,
-			Location:         instance.Spec.Location,
-			Organization:     instance.Spec.Organization,
-			OrganizationUnit: instance.Spec.OrganizationUnit,
-			CACert:           instance.Spec.CACert,
+			CountryCode:      certReconcileRequest.Spec.CountryCode,
+			CommonName:       certReconcileRequest.Spec.CommonName,
+			ExpiryMonths:     certReconcileRequest.Spec.ExpiryMonths,
+			Location:         certReconcileRequest.Spec.Location,
+			Organization:     certReconcileRequest.Spec.Organization,
+			OrganizationUnit: certReconcileRequest.Spec.OrganizationUnit,
+			CACert:           certReconcileRequest.Spec.CACert,
 		}
 
 		// the hsm fn to call
 		createCertFn := r.hsm.CreateSelfSignedCert
 
-		if instance.Spec.CertificateAuthority != nil {
+		if certReconcileRequest.Spec.CertificateAuthority != nil {
 
 			reqName := types.NamespacedName{
-				Name:      instance.Spec.CertificateAuthority.SecretName,
-				Namespace: instance.Spec.CertificateAuthority.Namespace,
+				Name:      certReconcileRequest.Spec.CertificateAuthority.SecretName,
+				Namespace: certReconcileRequest.Spec.CertificateAuthority.Namespace,
 			}
 
 			// get the cert and label saved as a secret
@@ -170,14 +169,14 @@ func (r *ReconcileCertificateRequest) Reconcile(request reconcile.Request) (reco
 			return reconcileResult, fmt.Errorf("CreateChainedCert(%s): %s", keyLabel, err)
 		}
 
-		if err := r.saveSecret(instance, cert, keyLabel, creds); err != nil {
+		if err := r.saveSecret(certReconcileRequest, cert, keyLabel, creds); err != nil {
 			return reconcileResult, err
 		}
 
 	} else if err != nil {
 		return reconcileResult, err
 	} else {
-		// alredy exists, update?
+		// already exists, update?
 	}
 
 	return reconcileResult, nil
