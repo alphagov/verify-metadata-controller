@@ -65,7 +65,7 @@ func trimPackagePrefix(file string) string {
 	if l := strings.LastIndex(file, "/vendor/"); l >= 0 {
 		return file[l+len("/vendor/"):]
 	}
-	if l := strings.LastIndex(file, "/src/"); l >= 0 {
+	if l := strings.LastIndex(file, "/pkg/"); l >= 0 {
 		return file[l+5:]
 	}
 	if l := strings.LastIndex(file, "/pkg/"); l >= 0 {

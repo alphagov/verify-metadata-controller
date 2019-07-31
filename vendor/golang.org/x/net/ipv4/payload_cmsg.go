@@ -11,7 +11,7 @@ import "net"
 // ReadFrom reads a payload of the received IPv4 datagram, from the
 // endpoint c, copying the payload into b. It returns the number of
 // bytes copied into b, the control message cm and the source address
-// src of the received datagram.
+// pkg of the received datagram.
 func (c *payloadHandler) ReadFrom(b []byte) (n int, cm *ControlMessage, src net.Addr, err error) {
 	if !c.ok() {
 		return 0, nil, nil, errInvalidConn

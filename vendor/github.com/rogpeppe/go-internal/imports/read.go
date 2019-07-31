@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Copied from Go distribution src/go/build/read.go.
+// Copied from Go distribution pkg/go/build/read.go.
 
 package imports
 

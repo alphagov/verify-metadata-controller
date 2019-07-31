@@ -50,9 +50,9 @@ var replacementTable = [...]rune{
 	// 0x0D->'\u000D' is a no-op.
 }
 
-// unescapeEntity reads an entity like "&lt;" from b[src:] and writes the
-// corresponding "<" to b[dst:], returning the incremented dst and src cursors.
-// Precondition: b[src] == '&' && dst <= src.
+// unescapeEntity reads an entity like "&lt;" from b[pkg:] and writes the
+// corresponding "<" to b[dst:], returning the incremented dst and pkg cursors.
+// Precondition: b[pkg] == '&' && dst <= pkg.
 // attribute should be true if parsing an attribute value.
 func unescapeEntity(b []byte, dst, src int, attribute bool) (dst1, src1 int) {
 	// https://html.spec.whatwg.org/multipage/syntax.html#consume-a-character-reference

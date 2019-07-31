@@ -151,7 +151,7 @@ func (ts *TestScript) cmdCp(neg bool, args []string) {
 		ts.Fatalf("unsupported: ! cp")
 	}
 	if len(args) < 2 {
-		ts.Fatalf("usage: cp src... dst")
+		ts.Fatalf("usage: cp pkg... dst")
 	}
 
 	dst := ts.MkAbs(args[len(args)-1])

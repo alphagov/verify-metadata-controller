@@ -145,7 +145,7 @@ func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (s
 		"--algorithm", "rsa",
 		"--hsm-metadata-signing-label", request.MetadataSigningKeyLabel,
 		"--hsm-saml-signing-label", request.SamlSigningKeyLabel,
-		"--validityDays", request.Data.ValidityDays
+		"--validityDays", request.Data.ValidityDays,
 	)
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("HSM_USER=%s", request.HSMCreds.User),

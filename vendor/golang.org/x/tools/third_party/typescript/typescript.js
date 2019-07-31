@@ -33731,7 +33731,7 @@ var ts;
                 if (!isBundledEmit) {
                     ts.Debug.assert(sourceFiles.length === 1);
                     // For modules or multiple emit files the mapRoot will have directory structure like the sources
-                    // So if src\a.ts and src\lib\b.ts are compiled together user would be moving the maps into mapRoot\a.js.map and mapRoot\lib\b.js.map
+                    // So if pkg\a.ts and pkg\lib\b.ts are compiled together user would be moving the maps into mapRoot\a.js.map and mapRoot\lib\b.js.map
                     sourceMapDir = ts.getDirectoryPath(ts.getSourceFilePathInNewDir(sourceFiles[0], host, sourceMapDir));
                 }
                 if (!ts.isRootedDiskPath(sourceMapDir) && !ts.isUrl(sourceMapDir)) {
@@ -43283,15 +43283,15 @@ var ts;
      *
      * 'rootDirs' allows the project to be spreaded across multiple locations and resolve modules with relative names as if
      * they were in the same location. For example lets say there are two files
-     * '/local/src/content/file1.ts'
-     * '/shared/components/contracts/src/content/protocols/file2.ts'
-     * After bundling content of '/shared/components/contracts/src' will be merged with '/local/src' so
+     * '/local/pkg/content/file1.ts'
+     * '/shared/components/contracts/pkg/content/protocols/file2.ts'
+     * After bundling content of '/shared/components/contracts/pkg' will be merged with '/local/pkg' so
      * if file1 has the following import 'import {x} from "./protocols/file2"' it will be resolved successfully in runtime.
      * 'rootDirs' provides the way to tell compiler that in order to get the whole project it should behave as if content of all
      * root dirs were merged together.
-     * I.e. for the example above 'rootDirs' will have two entries: [ '/local/src', '/shared/components/contracts/src' ].
+     * I.e. for the example above 'rootDirs' will have two entries: [ '/local/pkg', '/shared/components/contracts/pkg' ].
      * Compiler will first convert './protocols/file2' into absolute path relative to the location of containing file:
-     * '/local/src/content/protocols/file2' and try to load it - failure.
+     * '/local/pkg/content/protocols/file2' and try to load it - failure.
      * Then it will search 'rootDirs' looking for a longest matching prefix of this absolute path and if such prefix is found - absolute path will
      * be converted to a path relative to found rootDir entry './content/protocols/file2' (*). As a last step compiler will check all remaining
      * entries in 'rootDirs', use them to build absolute path out of (*) and try to resolve module from this location.

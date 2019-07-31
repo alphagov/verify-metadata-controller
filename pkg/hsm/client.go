@@ -28,7 +28,7 @@ type MetadataRequestData struct {
 	ContactGivenName string `yaml:"contact_given_name"`
 	ContactSurname   string `yaml:"contact_surname"`
 	ContactEmail     string `yaml:"contact_email"`
-	ValidityDays     int    `yaml:"validity_days"`
+	ValidityDays     string `yaml:"validity_days"`
 }
 
 type Client interface {

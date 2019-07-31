@@ -6,7 +6,7 @@
 
 // Generate system call table for DragonFly, NetBSD,
 // FreeBSD, OpenBSD or Darwin from master list
-// (for example, /usr/src/sys/kern/syscalls.master or
+// (for example, /usr/pkg/sys/kern/syscalls.master or
 // sys/syscall.h).
 package main
 

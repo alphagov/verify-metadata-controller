@@ -6,7 +6,7 @@ package eg
 
 // This file defines the AST rewriting pass.
 // Most of it was plundered directly from
-// $GOROOT/src/cmd/gofmt/rewrite.go (after convergent evolution).
+// $GOROOT/pkg/cmd/gofmt/rewrite.go (after convergent evolution).
 
 import (
 	"fmt"
@@ -76,7 +76,7 @@ func (tr *Transformer) transformItem(rv reflect.Value) (reflect.Value, bool, map
 // unchanged), and may add nodes for which no type information is
 // available in info.
 //
-// Derived from rewriteFile in $GOROOT/src/cmd/gofmt/rewrite.go.
+// Derived from rewriteFile in $GOROOT/pkg/cmd/gofmt/rewrite.go.
 //
 func (tr *Transformer) Transform(info *types.Info, pkg *types.Package, file *ast.File) int {
 	if !tr.seenInfos[info] {

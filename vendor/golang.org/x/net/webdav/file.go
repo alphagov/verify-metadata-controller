@@ -597,7 +597,7 @@ func (f *memFile) Write(p []byte) (int, error) {
 	return lenp, nil
 }
 
-// moveFiles moves files and/or directories from src to dst.
+// moveFiles moves files and/or directories from pkg to dst.
 //
 // See section 9.9.4 for when various HTTP status codes apply.
 func moveFiles(ctx context.Context, fs FileSystem, src, dst string, overwrite bool) (status int, err error) {
@@ -648,7 +648,7 @@ func copyProps(dst, src File) error {
 	return err
 }
 
-// copyFiles copies files and/or directories from src to dst.
+// copyFiles copies files and/or directories from pkg to dst.
 //
 // See section 9.8.5 for when various HTTP status codes apply.
 func copyFiles(ctx context.Context, fs FileSystem, src, dst string, overwrite bool, depth int, recursion int) (status int, err error) {

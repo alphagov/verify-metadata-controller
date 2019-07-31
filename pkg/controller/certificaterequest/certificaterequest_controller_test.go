@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
-	verifyv1beta1 "../../apis/verify/v1beta1"
-	"../../hsm/hsmfakes"
+	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
+	"github.com/alphagov/verify-metadata-controller/pkg/hsm/hsmfakes"
 	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"
 	corev1 "k8s.io/api/core/v1"

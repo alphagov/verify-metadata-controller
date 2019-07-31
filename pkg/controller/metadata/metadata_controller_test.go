@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
-	verifyv1beta1 "../apis/verify/v1beta1"
-	"../controller/certificaterequest"
-	"../hsm/hsmfakes"
+	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
+	"github.com/alphagov/verify-metadata-controller/pkg/controller/certificaterequest"
+	"github.com/alphagov/verify-metadata-controller/pkg/hsm/hsmfakes"
 	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"
 	appsv1 "k8s.io/api/apps/v1"
@@ -204,6 +204,7 @@ func TestReconcile(t *testing.T) {
 				ContactGivenName: "jeff",
 				ContactSurname:   "jefferson",
 				ContactEmail:     "jeff@jeff.com",
+				ValidityDays:     "30",
 			},
 			CertificateAuthority: verifyv1beta1.CertificateAuthoritySpec{
 				SecretName: "meta",

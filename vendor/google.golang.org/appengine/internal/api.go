@@ -346,7 +346,7 @@ var errTimeout = &CallError{
 
 func (c *context) Header() http.Header { return c.outHeader }
 
-// Copied from $GOROOT/src/pkg/net/http/transfer.go. Some response status
+// Copied from $GOROOT/pkg/pkg/net/http/transfer.go. Some response status
 // codes do not permit a response body (nor response entity headers such as
 // Content-Length, Content-Type, etc).
 func bodyAllowedForStatus(status int) bool {

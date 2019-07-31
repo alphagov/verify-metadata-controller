@@ -4,7 +4,7 @@
 
 package goproxytest
 
-// This code was taken from src/cmd/go/internal/modfetch/codehost.
+// This code was taken from pkg/cmd/go/internal/modfetch/codehost.
 
 // allHex reports whether the revision rev is entirely lower-case hexadecimal digits.
 func allHex(rev string) bool {

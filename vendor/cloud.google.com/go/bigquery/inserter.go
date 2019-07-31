@@ -68,13 +68,13 @@ func (t *Table) Uploader() *Inserter { return t.Inserter() }
 
 // Put uploads one or more rows to the BigQuery service.
 //
-// If src is ValueSaver, then its Save method is called to produce a row for uploading.
+// If pkg is ValueSaver, then its Save method is called to produce a row for uploading.
 //
-// If src is a struct or pointer to a struct, then a schema is inferred from it
+// If pkg is a struct or pointer to a struct, then a schema is inferred from it
 // and used to create a StructSaver. The InsertID of the StructSaver will be
 // empty.
 //
-// If src is a slice of ValueSavers, structs, or struct pointers, then each
+// If pkg is a slice of ValueSavers, structs, or struct pointers, then each
 // element of the slice is treated as above, and multiple rows are uploaded.
 //
 // Put returns a PutMultiError if one or more rows failed to be uploaded.
@@ -117,7 +117,7 @@ func valueSavers(src interface{}) ([]ValueSaver, error) {
 			return nil, err
 		}
 		if !ok {
-			return nil, fmt.Errorf("src[%d] has type %T, which is not a ValueSaver, struct or struct pointer", i, s)
+			return nil, fmt.Errorf("pkg[%d] has type %T, which is not a ValueSaver, struct or struct pointer", i, s)
 		}
 		savers = append(savers, saver)
 	}

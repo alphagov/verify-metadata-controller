@@ -47,9 +47,9 @@ type Root struct {
 // SrcDirsRoots returns the roots from build.Default.SrcDirs(). Not modules-compatible.
 func SrcDirsRoots(ctx *build.Context) []Root {
 	var roots []Root
-	roots = append(roots, Root{filepath.Join(ctx.GOROOT, "src"), RootGOROOT})
+	roots = append(roots, Root{filepath.Join(ctx.GOROOT, "pkg"), RootGOROOT})
 	for _, p := range filepath.SplitList(ctx.GOPATH) {
-		roots = append(roots, Root{filepath.Join(p, "src"), RootGOPATH})
+		roots = append(roots, Root{filepath.Join(p, "pkg"), RootGOPATH})
 	}
 	return roots
 }
@@ -124,7 +124,7 @@ func (w *walker) init() {
 
 // getIgnoredDirs reads an optional config file at <path>/.goimportsignore
 // of relative directories to ignore when scanning for go files.
-// The provided path is one of the $GOPATH entries with "src" appended.
+// The provided path is one of the $GOPATH entries with "pkg" appended.
 func (w *walker) getIgnoredDirs(path string) []string {
 	file := filepath.Join(path, ".goimportsignore")
 	slurp, err := ioutil.ReadFile(file)
@@ -165,7 +165,7 @@ func (w *walker) walk(path string, typ os.FileMode) error {
 	if typ.IsRegular() {
 		if dir == w.root.Path && (w.root.Type == RootGOROOT || w.root.Type == RootGOPATH) {
 			// Doesn't make sense to have regular files
-			// directly in your $GOPATH/src or $GOROOT/src.
+			// directly in your $GOPATH/pkg or $GOROOT/pkg.
 			return fastwalk.SkipFiles
 		}
 		if !strings.HasSuffix(path, ".go") {

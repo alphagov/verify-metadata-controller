@@ -325,10 +325,10 @@ func cleanAbsPaths(cfg *Config, words []string) []string {
 			}
 			// first line is GOPATH
 			for _, path := range filepath.SplitList(lines[0]) {
-				searchpaths = append(searchpaths, filepath.Join(path, "src"))
+				searchpaths = append(searchpaths, filepath.Join(path, "pkg"))
 			}
 			// second line is GOROOT
-			searchpaths = append(searchpaths, filepath.Join(lines[1], "src"))
+			searchpaths = append(searchpaths, filepath.Join(lines[1], "pkg"))
 		}
 		for _, sp := range searchpaths {
 			if strings.HasPrefix(cleaned[i], sp) {

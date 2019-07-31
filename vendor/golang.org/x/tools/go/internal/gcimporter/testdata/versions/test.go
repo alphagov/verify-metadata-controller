@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// This file is a copy of $GOROOT/src/go/internal/gcimporter/testdata/versions.test.go.
+// This file is a copy of $GOROOT/pkg/go/internal/gcimporter/testdata/versions.test.go.
 
 // To create a test case for a new export format version,
 // build this package with the latest compiler and store

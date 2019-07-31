@@ -93,8 +93,8 @@ table {
 </table>
 
 </body>
-<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
-<script type="text/javascript">window.jQuery || document.write(unescape("%3Cscript src='/doc/jquery.js' type='text/javascript'%3E%3C/script%3E"));</script>
+<script type="text/javascript" pkg="https://ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+<script type="text/javascript">window.jQuery || document.write(unescape("%3Cscript pkg='/doc/jquery.js' type='text/javascript'%3E%3C/script%3E"));</script>
 <script>
 $(document).ready(function() {
 	$('.autoselect').each(function() {

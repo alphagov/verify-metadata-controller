@@ -550,7 +550,7 @@ var attributes = []string{
 	"slot",
 	"span",
 	"spellcheck",
-	"src",
+	"pkg",
 	"srcdoc",
 	"srclang",
 	"srcset",

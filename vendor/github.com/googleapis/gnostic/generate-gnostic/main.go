@@ -108,7 +108,7 @@ func generateOpenAPIModel(version string) error {
 
 	goPackageName := strings.Replace(protoPackageName, ".", "_", -1)
 
-	projectRoot := os.Getenv("GOPATH") + "/src/github.com/googleapis/gnostic/"
+	projectRoot := os.Getenv("GOPATH") + "/pkg/github.com/googleapis/gnostic/"
 
 	baseSchema, err := jsonschema.NewSchemaFromFile(projectRoot + "jsonschema/schema.json")
 	if err != nil {

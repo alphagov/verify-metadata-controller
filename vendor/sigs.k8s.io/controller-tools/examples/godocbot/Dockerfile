@@ -1,7 +1,7 @@
 # Build and test the manager binary
 FROM golang:1.9.3 as builder
 
-# Copy in the go src
+# Copy in the go pkg
 WORKDIR /go/src/sigs.k8s.io/controller-tools/examples/godocbot
 COPY pkg/    pkg/
 COPY cmd/    cmd/

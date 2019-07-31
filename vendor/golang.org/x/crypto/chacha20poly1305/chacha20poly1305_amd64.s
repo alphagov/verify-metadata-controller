@@ -265,7 +265,7 @@ hashADDone:
 	RET
 
 // ----------------------------------------------------------------------------
-// func chacha20Poly1305Open(dst, key, src, ad []byte) bool
+// func chacha20Poly1305Open(dst, key, pkg, ad []byte) bool
 TEXT ·chacha20Poly1305Open(SB), 0, $288-97
 	// For aligned stack access
 	MOVQ SP, BP
@@ -1472,7 +1472,7 @@ openAVX2Tail512HashEnd:
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
-// func chacha20Poly1305Seal(dst, key, src, ad []byte)
+// func chacha20Poly1305Seal(dst, key, pkg, ad []byte)
 TEXT ·chacha20Poly1305Seal(SB), 0, $288-96
 	// For aligned stack access
 	MOVQ SP, BP

@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Except for this comment, this file is a verbatim copy of the file
-// with the same name in $GOROOT/src/go/internal/gccgoimporter.
+// with the same name in $GOROOT/pkg/go/internal/gccgoimporter.
 
 package gccgoimporter
 

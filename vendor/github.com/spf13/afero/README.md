@@ -203,10 +203,10 @@ Then in my tests I would initialize a new MemMapFs for each test:
 func TestExist(t *testing.T) {
 	appFS := afero.NewMemMapFs()
 	// create test files and directories
-	appFS.MkdirAll("src/a", 0755)
-	afero.WriteFile(appFS, "src/a/b", []byte("file b"), 0644)
-	afero.WriteFile(appFS, "src/c", []byte("file c"), 0644)
-	name := "src/c"
+	appFS.MkdirAll(pkg, 0755)
+	afero.WriteFile(appFS, pkg, []byte("file b"), 0644)
+	afero.WriteFile(appFS, pkg, []byte("file c"), 0644)
+	name := pkg
 	_, err := appFS.Stat(name)
 	if os.IsNotExist(err) {
 		t.Errorf("file \"%s\" does not exist.\n", name)

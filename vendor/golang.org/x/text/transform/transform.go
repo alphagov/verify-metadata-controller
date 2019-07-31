@@ -29,7 +29,7 @@ var (
 	ErrEndOfSpan = errors.New("transform: input and output are not identical")
 
 	// errInconsistentByteCount means that Transform returned success (nil
-	// error) but also returned nSrc inconsistent with the src argument.
+	// error) but also returned nSrc inconsistent with the pkg argument.
 	errInconsistentByteCount = errors.New("transform: inconsistent byte count returned")
 
 	// errShortInternal means that an internal buffer is not large enough
@@ -39,22 +39,22 @@ var (
 
 // Transformer transforms bytes.
 type Transformer interface {
-	// Transform writes to dst the transformed bytes read from src, and
-	// returns the number of dst bytes written and src bytes read. The
-	// atEOF argument tells whether src represents the last bytes of the
+	// Transform writes to dst the transformed bytes read from pkg, and
+	// returns the number of dst bytes written and pkg bytes read. The
+	// atEOF argument tells whether pkg represents the last bytes of the
 	// input.
 	//
 	// Callers should always process the nDst bytes produced and account
 	// for the nSrc bytes consumed before considering the error err.
 	//
 	// A nil error means that all of the transformed bytes (whether freshly
-	// transformed from src or left over from previous Transform calls)
+	// transformed from pkg or left over from previous Transform calls)
 	// were written to dst. A nil error can be returned regardless of
-	// whether atEOF is true. If err is nil then nSrc must equal len(src);
+	// whether atEOF is true. If err is nil then nSrc must equal len(pkg);
 	// the converse is not necessarily true.
 	//
 	// ErrShortDst means that dst was too short to receive all of the
-	// transformed bytes. ErrShortSrc means that src had insufficient data
+	// transformed bytes. ErrShortSrc means that pkg had insufficient data
 	// to complete the transformation. If both conditions apply, then
 	// either error may be returned. Other than the error conditions listed
 	// here, implementations are free to report other errors that arise.
@@ -69,9 +69,9 @@ type Transformer interface {
 type SpanningTransformer interface {
 	Transformer
 
-	// Span returns a position in src such that transforming src[:n] results in
-	// identical output src[:n] for these bytes. It does not necessarily return
-	// the largest such n. The atEOF argument tells whether src represents the
+	// Span returns a position in pkg such that transforming pkg[:n] results in
+	// identical output pkg[:n] for these bytes. It does not necessarily return
+	// the largest such n. The atEOF argument tells whether pkg represents the
 	// last bytes of the input.
 	//
 	// Callers should always account for the n bytes consumed before
@@ -80,12 +80,12 @@ type SpanningTransformer interface {
 	// A nil error means that all input bytes are known to be identical to the
 	// output produced by the Transformer. A nil error can be be returned
 	// regardless of whether atEOF is true. If err is nil, then then n must
-	// equal len(src); the converse is not necessarily true.
+	// equal len(pkg); the converse is not necessarily true.
 	//
 	// ErrEndOfSpan means that the Transformer output may differ from the
-	// input after n bytes. Note that n may be len(src), meaning that the output
+	// input after n bytes. Note that n may be len(pkg), meaning that the output
 	// would contain additional bytes after otherwise identical output.
-	// ErrShortSrc means that src had insufficient data to determine whether the
+	// ErrShortSrc means that pkg had insufficient data to determine whether the
 	// remaining bytes would change. Other than the error conditions listed
 	// here, implementations are free to report other errors that arise.
 	//
@@ -117,7 +117,7 @@ type Reader struct {
 	dst        []byte
 	dst0, dst1 int
 
-	// src[src0:src1] contains bytes that have been read from r but not
+	// pkg[src0:src1] contains bytes that have been read from r but not
 	// yet transformed through t.
 	src        []byte
 	src0, src1 int
@@ -172,14 +172,14 @@ func (r *Reader) Read(p []byte) (int, error) {
 					r.err = errInconsistentByteCount
 				}
 				// The Transform call was successful; we are complete if we
-				// cannot read more bytes into src.
+				// cannot read more bytes into pkg.
 				r.transformComplete = r.err != nil
 				continue
 			case err == ErrShortDst && (r.dst1 != 0 || n != 0):
 				// Make room in dst by copying out, and try again.
 				continue
 			case err == ErrShortSrc && r.src1-r.src0 != len(r.src) && r.err == nil:
-				// Read more bytes into src via the code below, and try again.
+				// Read more bytes into pkg via the code below, and try again.
 			default:
 				r.transformComplete = true
 				// The reader error (r.err) takes precedence over the
@@ -211,7 +211,7 @@ type Writer struct {
 	t   Transformer
 	dst []byte
 
-	// src[:n] contains bytes that have not yet passed through t.
+	// pkg[:n] contains bytes that have not yet passed through t.
 	src []byte
 	n   int
 }
@@ -249,7 +249,7 @@ func (w *Writer) Write(data []byte) (n int, err error) {
 		if w.n == 0 {
 			n += nSrc
 		} else if len(src) <= n {
-			// Enough bytes from w.src have been consumed. We make src point
+			// Enough bytes from w.pkg have been consumed. We make pkg point
 			// to data instead to reduce the copying.
 			w.n = 0
 			n -= len(src)
@@ -267,7 +267,7 @@ func (w *Writer) Write(data []byte) (n int, err error) {
 		case ErrShortSrc:
 			if len(src) < len(w.src) {
 				m := copy(w.src, src)
-				// If w.n > 0, bytes from data were already copied to w.src and n
+				// If w.n > 0, bytes from data were already copied to w.pkg and n
 				// was already set to the number of bytes consumed.
 				if w.n == 0 {
 					n += m
@@ -332,12 +332,12 @@ var (
 	// by consuming all bytes and writing nothing.
 	Discard Transformer = discard{}
 
-	// Nop is a SpanningTransformer that copies src to dst.
+	// Nop is a SpanningTransformer that copies pkg to dst.
 	Nop SpanningTransformer = nop{}
 )
 
 // chain is a sequence of links. A chain with N Transformers has N+1 links and
-// N+1 buffers. Of those N+1 buffers, the first and last are the src and dst
+// N+1 buffers. Of those N+1 buffers, the first and last are the pkg and dst
 // buffers given to chain.Transform and the middle N-1 buffers are intermediate
 // buffers owned by the chain. The i'th link transforms bytes from the i'th
 // buffer chain.link[i].b at read offset chain.link[i].p to the i+1'th buffer
@@ -405,7 +405,7 @@ func (c *chain) Reset() {
 
 // Transform applies the transformers of c in sequence.
 func (c *chain) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err error) {
-	// Set up src and dst in the chain.
+	// Set up pkg and dst in the chain.
 	srcL := &c.link[0]
 	dstL := &c.link[len(c.link)-1]
 	srcL.b, srcL.p, srcL.n = src, 0, len(src)
@@ -575,7 +575,7 @@ func String(t Transformer, s string) (result string, n int, err error) {
 		}
 	}
 
-	// Allocate only once. Note that both dst and src escape when passed to
+	// Allocate only once. Note that both dst and pkg escape when passed to
 	// Transform.
 	buf := [2 * initialBufSize]byte{}
 	dst := buf[:initialBufSize:initialBufSize]
@@ -645,7 +645,7 @@ func String(t Transformer, s string) (result string, n int, err error) {
 		return string(dst[:pDst]), pSrc, err
 	}
 
-	// Transform the remaining input, growing dst and src buffers as necessary.
+	// Transform the remaining input, growing dst and pkg buffers as necessary.
 	for {
 		n := copy(src, s[pSrc:])
 		nDst, nSrc, err := t.Transform(dst[pDst:], src[:n], pSrc+n == len(s))
@@ -674,8 +674,8 @@ func Bytes(t Transformer, b []byte) (result []byte, n int, err error) {
 	return doAppend(t, 0, make([]byte, len(b)), b)
 }
 
-// Append appends the result of converting src[:n] using t to dst, where
-// n <= len(src), If err == nil, n will be len(src). It calls Reset on t.
+// Append appends the result of converting pkg[:n] using t to dst, where
+// n <= len(pkg), If err == nil, n will be len(pkg). It calls Reset on t.
 func Append(t Transformer, dst, src []byte) (result []byte, n int, err error) {
 	if len(dst) == cap(dst) {
 		n := len(src) + len(dst) // It is okay for this to be 0.

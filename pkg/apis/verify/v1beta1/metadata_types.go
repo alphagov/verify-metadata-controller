@@ -33,6 +33,7 @@ type MetadataSigningSpec struct {
 	ContactGivenName string `json:"contactGivenName,omitempty"`
 	ContactSurname   string `json:"contactSurname,omitempty"`
 	ContactEmail     string `json:"contactEmail,omitempty"`
+	ValidityDays     string `json:"validity_days,omitempty"`
 }
 
 // MetadataSpec defines the desired state of Metadata

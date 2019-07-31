@@ -8,7 +8,7 @@
 //
 //	http://godoc/		main landing page
 //	http://godoc/doc/	serve from $GOROOT/doc - spec, mem, etc.
-//	http://godoc/src/	serve files from $GOROOT/src; .go gets pretty-printed
+//	http://godoc/src/	serve files from $GOROOT/pkg; .go gets pretty-printed
 //	http://godoc/cmd/	serve documentation about commands
 //	http://godoc/pkg/	serve documentation about packages
 //				(idea is if you say import "compress/zlib", you go to
@@ -200,7 +200,7 @@ func main() {
 
 	// Bind $GOPATH trees into Go root.
 	for _, p := range filepath.SplitList(build.Default.GOPATH) {
-		fs.Bind("/src", gatefs.New(vfs.OS(p), fsGate), "/src", vfs.BindAfter)
+		fs.Bind("/pkg", gatefs.New(vfs.OS(p), fsGate), "/pkg", vfs.BindAfter)
 	}
 
 	var typeAnalysis, pointerAnalysis bool

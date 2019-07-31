@@ -17,7 +17,7 @@ limitations under the License.
 package apis
 
 import (
-	"./verify/v1beta1"
+	"github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
 )
 
 func init() {

@@ -296,7 +296,7 @@ func (f Form) SpanString(s string, atEOF bool) (n int, err error) {
 	return n, err
 }
 
-// quickSpan returns a boundary n such that src[0:n] == f(src[0:n]) and
+// quickSpan returns a boundary n such that pkg[0:n] == f(pkg[0:n]) and
 // whether any non-normalized parts were found. If atEOF is false, n will
 // not point past the last segment if this segment might be become
 // non-normalized by appending other runes.
@@ -497,9 +497,9 @@ func lastBoundary(fd *formInfo, b []byte) int {
 	return i
 }
 
-// decomposeSegment scans the first segment in src into rb. It inserts 0x034f
+// decomposeSegment scans the first segment in pkg into rb. It inserts 0x034f
 // (Grapheme Joiner) when it encounters a sequence of more than 30 non-starters
-// and returns the number of bytes consumed from src or iShortDst or iShortSrc.
+// and returns the number of bytes consumed from pkg or iShortDst or iShortSrc.
 func decomposeSegment(rb *reorderBuffer, sp int, atEOF bool) int {
 	// Force one character to be consumed.
 	info := rb.f.info(rb.src, sp)
