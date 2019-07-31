@@ -366,6 +366,11 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 	currentVersion := fmt.Sprintf("%d", currentVersionInt)
+	log.Info("Hash of metadata values",
+		"namespace", instance.Namespace,
+		"hashValue", currentVersion,
+		"name", instance.Name,
+	)
 
 	// lookup certificate authority data
 	metadataSigningSecret := &corev1.Secret{}
