@@ -19,7 +19,8 @@ Given("the login credentials exist") do
 end
 
 When("I run the java executable with no parameters") do
-  @last_output = `mdgen/bin/mdgen 2>&1`
+  @last_output = `mdgen/bin/mdgen 2>&1 ; echo $?`.chomp
+  @last_exit_code = @last_output[-1].to_i
 end
 
 When("I run the java executable with correct parameters for the proxy node") do
@@ -32,6 +33,10 @@ end
 
 Then("I see that the application complains about missing parameters") do
   expect(@last_output).to include "required parameters"
+end
+
+And("the exit code is not zero") do
+  expect(@last_exit_code).to be > 0
 end
 
 Then("I see that the application outputs a file") do

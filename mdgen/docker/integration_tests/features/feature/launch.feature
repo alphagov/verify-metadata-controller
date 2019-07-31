@@ -7,6 +7,7 @@ Feature: The java app
   Scenario: Launching the java app
     When I run the java executable with no parameters
     Then I see that the application complains about missing parameters
+    And the exit code is not zero
 
   Scenario Outline: The proxy-node use case
     Produce signed metadata for the proxy node using a cert supplied by the verify-metadata-controller

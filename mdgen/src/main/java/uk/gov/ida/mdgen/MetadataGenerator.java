@@ -123,7 +123,8 @@ public class MetadataGenerator implements Callable<Void> {
 
     public static void main(String[] args) throws InitializationException {
         InitializationService.initialize();
-        CommandLine.call(new MetadataGenerator(), args);
+        CommandLine cmd = new CommandLine(new MetadataGenerator());
+        System.exit(cmd.execute(args));
     }
 
     @Override
