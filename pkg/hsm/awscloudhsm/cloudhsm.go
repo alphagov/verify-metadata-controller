@@ -2,15 +2,16 @@ package awscloudhsm
 
 import (
 	"fmt"
+	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
-
-	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
-	"github.com/labstack/gommon/log"
-	"gopkg.in/yaml.v2"
+	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
+
+var log = logf.Log.WithName("cloudhsm")
 
 var _ hsm.Client = &Client{}
 
@@ -64,7 +65,7 @@ func (c *Client) CreateSelfSignedCert(label string, hsmCreds hsm.Credentials, re
 	)
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate rsa key for %s: %s", label, err)
+		return nil, fmt.Errorf("failed to create self-signed cert for %s: %s", label, err)
 	}
 	return out, nil
 }
@@ -97,7 +98,7 @@ func (c *Client) CreateChainedCert(label string, hsmCreds hsm.Credentials, req h
 	)
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate rsa key for %s: %s", label, err)
+		return nil, fmt.Errorf("failed to create chained cert for %s: %s", label, err)
 	}
 	return out, nil
 }
@@ -117,8 +118,9 @@ func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (s
 		return nil, err
 	}
 	defer os.RemoveAll(tmpDir)
-	tmpMetadataSigningCertPath := filepath.Join(tmpDir, "saml-cert.pem")
-	tmpSAMLSigningCertPath := filepath.Join(tmpDir, "metadata-cert.pem")
+	tmpMetadataSigningCertPath := filepath.Join(tmpDir, "metadata-cert.pem")
+	tmpSAMLSigningCertPath := filepath.Join(tmpDir, "saml-signing-cert.pem")
+	tmpSAMLEncryptionCertPath := filepath.Join(tmpDir, "saml-encryption-cert.pem")
 	tmpMetadataOutputPath := filepath.Join(tmpDir, "metadata.xml")
 
 	if err := ioutil.WriteFile(tmpMetadataSigningCertPath, request.MetadataSigningCert, 0644); err != nil {
@@ -129,22 +131,38 @@ func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (s
 		return nil, err
 	}
 
+	if err := ioutil.WriteFile(tmpSAMLEncryptionCertPath, request.SAMLEncryptionCert, 0644); err != nil {
+		return nil, err
+	}
+
 	log.Info("mdgen",
 		"type", request.Type,
 		"input", specFileName,
 		"output", tmpMetadataOutputPath,
 		"metadataSigningKeyLabel", request.MetadataSigningKeyLabel,
 		"samlSigningKeyLabel", request.SamlSigningKeyLabel,
+		"samlEncryptionCert", request.SAMLEncryptionCert,
 	)
+
+	var samlSigningOption string
+	if request.HSMSAMLSigning {
+		samlSigningOption = "--hsm-saml-signing-cert-file"
+	} else {
+		samlSigningOption = "--supplied-saml-signing-cert-file"
+	}
+
 	cmd := exec.Command("/mdgen/build/install/mdgen/bin/mdgen",
 		request.Type,
 		specFileName,
-		tmpSAMLSigningCertPath,
 		tmpMetadataSigningCertPath,
 		"--output", tmpMetadataOutputPath,
 		"--algorithm", "rsa",
 		"--hsm-metadata-signing-label", request.MetadataSigningKeyLabel,
 		"--hsm-saml-signing-label", request.SamlSigningKeyLabel,
+		"--hsm-metadata-signing-key-label", request.MetadataSigningKeyLabel,
+		"--hsm-saml-signing-key-label", request.SamlSigningKeyLabel,
+		samlSigningOption, tmpSAMLSigningCertPath,
+		"--supplied-saml-encryption-cert-file", tmpSAMLEncryptionCertPath,
 		"--validityDays", request.Data.ValidityDays,
 	)
 	cmd.Env = append(os.Environ(),
@@ -157,18 +175,18 @@ func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (s
 		return nil, fmt.Errorf("failed to execute mdgen: %s", out)
 	}
 
-	b, err := ioutil.ReadFile(tmpMetadataOutputPath)
+	metadata, err := ioutil.ReadFile(tmpMetadataOutputPath)
 	if err != nil {
 		return nil, err
 	}
-	if len(b) == 0 {
+	if len(metadata) == 0 {
 		return nil, fmt.Errorf("no metadata generated from mdgen: %s", out)
 	}
 
 	log.Info("mdgen-done",
-		"metadata", string(b),
+		"metadata", string(metadata),
 	)
-	return b, nil
+	return metadata, nil
 }
 
 func createGeneratorFile(data hsm.MetadataRequestData) (fileName string, err error) {

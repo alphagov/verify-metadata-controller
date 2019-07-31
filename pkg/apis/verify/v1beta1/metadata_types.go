@@ -23,17 +23,19 @@ import (
 // SigningSpec provides the details for the metadata generator and signer
 // +k8s:openapi-gen=true
 type MetadataSigningSpec struct {
-	EntityID         string `json:"entityID,omitempty"`
-	PostURL          string `json:"postURL,omitempty"`
-	RedirectURL      string `json:"redirectURL,omitempty"`
-	OrgName          string `json:"orgName,omitempty"`
-	OrgDisplayName   string `json:"orgDisplayName,omitempty"`
-	OrgURL           string `json:"orgURL,omitempty"`
-	ContactCompany   string `json:"contactCompany,omitempty"`
-	ContactGivenName string `json:"contactGivenName,omitempty"`
-	ContactSurname   string `json:"contactSurname,omitempty"`
-	ContactEmail     string `json:"contactEmail,omitempty"`
-	ValidityDays     string `json:"validity_days,omitempty"`
+	EntityID                  string `json:"entityID,omitempty"`
+	PostURL                   string `json:"postURL,omitempty"`
+	RedirectURL               string `json:"redirectURL,omitempty"`
+	OrgName                   string `json:"orgName,omitempty"`
+	OrgDisplayName            string `json:"orgDisplayName,omitempty"`
+	OrgURL                    string `json:"orgURL,omitempty"`
+	ContactCompany            string `json:"contactCompany,omitempty"`
+	ContactGivenName          string `json:"contactGivenName,omitempty"`
+	ContactSurname            string `json:"contactSurname,omitempty"`
+	ContactEmail              string `json:"contactEmail,omitempty"`
+	SamlSigningCertificate    string `json:"samlSigningCertificate,omitempty"`
+	SamlEncryptionCertificate string `json:"samlEncryptionCertificate,omitempty"`
+	ValidityDays              string `json:"validityDays,omitempty"`
 }
 
 // MetadataSpec defines the desired state of Metadata
@@ -44,7 +46,8 @@ type MetadataSpec struct {
 	Data                   MetadataSigningSpec      `json:"data,omitempty"`
 	Enabled                bool                     `json:"enabled,omitempty"`
 	CertificateAuthority   CertificateAuthoritySpec `json:"certificateAuthority"`
-	SAMLSigningCertificate CertificateRequestSpec   `json:"samlSigningCertRequest"`
+	SAMLSigningCertificate *CertificateRequestSpec  `json:"samlSigningCertRequest,omitempty"`
+	PublishingPath         string                   `json:"publishingPath,omitempty"`
 }
 
 // MetadataStatus defines the observed state of Metadata

@@ -15,13 +15,13 @@ Here are examples:
 #### Case one (proxy node)
 
 ```
-   mdgen proxy <yaml_definition_file.yml> <metadata_signing_certificate.pem> --hsm-metadata-signing-label <metadata_signing_label> --output <metadata_output_file.xml> --hsm-saml-signing-cert-file <saml_signing_cert_file.pem> --hsm-saml-signing-label <hsm_saml_signing_label>
+   mdgen proxy <yaml_definition_file.yml> <metadata_signing_certificate.pem> --hsm-metadata-signing-key-label <metadata_signing_key_label> --output <metadata_output_file.xml> --hsm-saml-signing-cert-file <saml_signing_cert_file.pem> --hsm-saml-signing-key-label <hsm_saml_signing_key_label>
 ```
 
 #### Case two (connector node)
 
 ```
-    mdgen connector <yaml_definition_file.yml> <metadata_signing_certificate.pem>  --hsm-metadata-signing-label <metadata_signing_label> --output <metadata_output_file.xml> --supplied-saml-signing-cert-file <saml_signing_cert_file.pem> --supplied-saml-encryption-cert-file <saml_encryption_cert_file.pem> 
+    mdgen connector <yaml_definition_file.yml> <metadata_signing_certificate.pem>  --hsm-metadata-signing-key-label <metadata_signing_key_label> --output <metadata_output_file.xml> --supplied-saml-signing-cert-file <saml_signing_cert_file.pem> --supplied-saml-encryption-cert-file <saml_encryption_cert_file.pem>
 ```
 
 ## Building the docker image
@@ -44,7 +44,7 @@ and password up from environment variables.
 It's also necessary for that cloudhsm user to have a correct key-pair and
 a certificate signed with that key-pair.  For best results, use `cu9` for
 the username and find out the password.  The key-pair is hard-coded into 
-the test as the `--hsm-metadata-signing-label` parameter and the 
+the test as the `--hsm-metadata-signing-key-label` parameter and the
 certificate is `test/cloudhsmkeycert.rsa.pem`.
 
 Key-pairs and certificates can be generated using `cloudhsmtool` which is 

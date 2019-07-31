@@ -167,6 +167,12 @@ func (r *ReconcileMetadata) getCACerts(ctx context.Context, name, namespace stri
 }
 
 func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.Metadata, metadataSigningSecret *corev1.Secret, ca *verifyv1beta1.CertificateAuthoritySpec) (map[string][]byte, error) {
+
+	if instance.Spec.SAMLSigningCertificate == nil {
+		if instance.Spec.Data.SamlEncryptionCertificate == "" || instance.Spec.Data.SamlSigningCertificate == "" {
+			return nil, fmt.Errorf("encryption and signing certs are required if CertificateSigningRequest is absent")
+		}
+	}
 	if metadataSigningSecret == nil {
 		return nil, fmt.Errorf("metadataSigningSecret is required")
 	}
@@ -214,28 +220,42 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 	}
 	metadataCATruststorePassword := truststorePassword
 
-	// generate samlSigningCert and key
-	samlSigningCreds, err := hsm.GetCredentials()
-	if err != nil {
-		return nil, err
-	}
 	samlSigningKeyLabel := fmt.Sprintf("%s-%s-saml", instance.ObjectMeta.Namespace, instance.ObjectMeta.Name)
-	_, err = r.hsm.FindOrCreateRSAKeyPair(samlSigningKeyLabel, samlSigningCreds)
-	if err != nil {
-		return nil, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", samlSigningKeyLabel, err)
+	var samlSigningCert []byte
+	var samlEncryptionCert []byte
+	var samlSigningCreds hsm.Credentials
+
+	signingCertFromCertRequest := instance.Spec.SAMLSigningCertificate != nil
+
+	if signingCertFromCertRequest {
+		// generate samlSigningCert and key
+		samlSigningCreds, err = hsm.GetCredentials()
+		if err != nil {
+			return nil, err
+		}
+		_, err = r.hsm.FindOrCreateRSAKeyPair(samlSigningKeyLabel, samlSigningCreds)
+		if err != nil {
+			return nil, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", samlSigningKeyLabel, err)
+		}
+		samlSigningCertReq := hsm.CertRequest{
+			CountryCode:      instance.Spec.SAMLSigningCertificate.CountryCode,
+			CommonName:       instance.Spec.SAMLSigningCertificate.CommonName,
+			ExpiryMonths:     instance.Spec.SAMLSigningCertificate.ExpiryMonths,
+			Location:         instance.Spec.SAMLSigningCertificate.Location,
+			Organization:     instance.Spec.SAMLSigningCertificate.Organization,
+			OrganizationUnit: instance.Spec.SAMLSigningCertificate.OrganizationUnit,
+		}
+		samlSigningCert, err = r.hsm.CreateSelfSignedCert(samlSigningKeyLabel, samlSigningCreds, samlSigningCertReq)
+		if err != nil {
+			return nil, fmt.Errorf("CreateSelfSignedCert(%s): %s", samlSigningKeyLabel, err)
+		}
+		samlEncryptionCert = samlSigningCert
+	} else {
+		samlSigningCert = []byte(instance.Spec.Data.SamlSigningCertificate)
+		samlEncryptionCert = []byte(instance.Spec.Data.SamlEncryptionCertificate)
 	}
-	samlSigningCertReq := hsm.CertRequest{
-		CountryCode:      instance.Spec.SAMLSigningCertificate.CountryCode,
-		CommonName:       instance.Spec.SAMLSigningCertificate.CommonName,
-		ExpiryMonths:     instance.Spec.SAMLSigningCertificate.ExpiryMonths,
-		Location:         instance.Spec.SAMLSigningCertificate.Location,
-		Organization:     instance.Spec.SAMLSigningCertificate.Organization,
-		OrganizationUnit: instance.Spec.SAMLSigningCertificate.OrganizationUnit,
-	}
-	samlSigningCert, err := r.hsm.CreateSelfSignedCert(samlSigningKeyLabel, samlSigningCreds, samlSigningCertReq)
-	if err != nil {
-		return nil, fmt.Errorf("CreateChainedCert(%s): %s", samlSigningKeyLabel, err)
-	}
+
+	// TODO do we need this truststore? If so, do we need an encryption one?
 	samlSigningTruststore, err := generateTruststore(samlSigningCert, samlSigningKeyLabel, truststorePassword)
 	if err != nil {
 		return nil, err
@@ -245,8 +265,10 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 	metadataRequest := hsm.GenerateMetadataRequest{
 		MetadataSigningCert:     metadataSigningCert,
 		SAMLSigningCert:         samlSigningCert,
+		SAMLEncryptionCert:      samlEncryptionCert,
 		MetadataSigningKeyLabel: string(metadataSigningKeyLabel),
 		SamlSigningKeyLabel:     string(samlSigningKeyLabel),
+		HSMSAMLSigning:          signingCertFromCertRequest,
 		HSMCreds: hsm.Credentials{
 			IP:         string(metadataHSMIP),
 			User:       string(metadataHSMUser),
@@ -292,6 +314,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"metadataCATruststore":              []byte(metadataCATruststore),
 		"metadataCATruststoreBase64":        []byte(base64.StdEncoding.EncodeToString(metadataCATruststore)),
 		"metadataCATruststorePassword":      []byte(metadataCATruststorePassword),
+		"publishingPath":                    []byte(getPublishingPath(instance)),
 		"samlSigningCert":                   []byte(samlSigningCert),
 		"samlSigningCertBase64":             []byte(base64.StdEncoding.EncodeToString(samlSigningCert)),
 		"samlSigningTruststore":             []byte(samlSigningTruststore),
@@ -299,12 +322,17 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"samlSigningTruststorePassword":     []byte(samlSigningTruststorePassword),
 		"samlSigningKeyType":                []byte(cloudHSMKeyType),
 		"samlSigningKeyLabel":               []byte(samlSigningKeyLabel),
-		"hsmUser":                           []byte(samlSigningCreds.User),
-		"hsmPassword":                       []byte(samlSigningCreds.Password),
-		"hsmIP":                             []byte(samlSigningCreds.IP),
-		"hsmCIDR":                           []byte(fmt.Sprintf("%s/32", samlSigningCreds.IP)),
-		"hsmCustomerCA.crt":                 []byte(samlSigningCreds.CustomerCA),
+		"samlEncryptionCert":                []byte(samlEncryptionCert),
 	}
+
+	if signingCertFromCertRequest {
+		data["hsmUser"] = []byte(samlSigningCreds.User)
+		data["hsmPassword"] = []byte(samlSigningCreds.Password)
+		data["hsmIP"] = []byte(samlSigningCreds.IP)
+		data["hsmCIDR"] = []byte(fmt.Sprintf("%s/32", samlSigningCreds.IP))
+		data["hsmCustomerCA.crt"] = []byte(samlSigningCreds.CustomerCA)
+	}
+
 	return data, nil
 }
 
@@ -340,7 +368,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	}
 	currentVersion := fmt.Sprintf("%d", currentVersionInt)
 
-	// lookup certifcate authority data
+	// lookup certificate authority data
 	metadataSigningSecret := &corev1.Secret{}
 	err = r.Get(context.TODO(), types.NamespacedName{
 		Name:      instance.Spec.CertificateAuthority.SecretName,
@@ -451,7 +479,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "data",
-									MountPath: "/usr/share/nginx/html/metadata.xml",
+									MountPath: fmt.Sprintf("/usr/share/nginx/html/%s", getPublishingPath(instance)),
 									SubPath:   metadataXMLKey,
 								},
 							},
@@ -624,4 +652,12 @@ func generateTruststore(cert []byte, alias, storePass string) ([]byte, error) {
 		return nil, err
 	}
 	return b, nil
+}
+
+func getPublishingPath(instance *verifyv1beta1.Metadata) string {
+	if instance.Spec.PublishingPath != "" {
+		return instance.Spec.PublishingPath
+	} else {
+		return metadataXMLKey
+	}
 }
