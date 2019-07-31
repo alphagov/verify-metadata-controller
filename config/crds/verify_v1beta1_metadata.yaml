@@ -60,10 +60,16 @@ spec:
                   type: string
                 redirectURL:
                   type: string
+                samlEncryptionCertificate:
+                  type: string
+                samlSigningCertificate:
+                  type: string
               type: object
             enabled:
               type: boolean
             id:
+              type: string
+            publishingPath:
               type: string
             samlSigningCertRequest:
               properties:
@@ -100,7 +106,6 @@ spec:
           required:
           - type
           - certificateAuthority
-          - samlSigningCertRequest
           type: object
         status:
           type: object
