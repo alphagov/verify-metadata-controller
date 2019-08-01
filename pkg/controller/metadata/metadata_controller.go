@@ -51,6 +51,8 @@ const (
 	metadataXMLKey     = "metadata.xml"
 	truststorePassword = "mashmallow"
 	VersionAnnotation  = "metadata-version"
+	beginTag           = "-----BEGIN CERTIFICATE-----\n"
+	endTag             = "\n-----END CERTIFICATE-----"
 )
 
 var log = logf.Log.WithName("controller")
@@ -251,8 +253,8 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		}
 		samlEncryptionCert = samlSigningCert
 	} else {
-		samlSigningCert = []byte(instance.Spec.Data.SamlSigningCertificate)
-		samlEncryptionCert = []byte(instance.Spec.Data.SamlEncryptionCertificate)
+		samlSigningCert = formatCertString(instance.Spec.Data.SamlSigningCertificate)
+		samlEncryptionCert = formatCertString(instance.Spec.Data.SamlEncryptionCertificate)
 	}
 
 	// TODO do we need this truststore? If so, do we need an encryption one?
@@ -664,4 +666,8 @@ func getPublishingPath(instance *verifyv1beta1.Metadata) string {
 	} else {
 		return metadataXMLKey
 	}
+}
+
+func formatCertString(certString string) []byte {
+	return []byte(beginTag + certString + endTag)
 }

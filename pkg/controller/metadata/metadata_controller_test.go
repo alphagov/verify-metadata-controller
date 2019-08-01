@@ -422,10 +422,10 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 	g.Eventually(getSecretData("metadataSigningTruststore")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("metadataSigningKeyLabel")).Should(Equal([]byte("default-meta")))
 	g.Eventually(getSecretData("publishingPath")).Should(Equal([]byte("ConnectorMetadata")))
-	g.Eventually(getSecretData("samlSigningCert")).Should(Equal(suppliedSigningCert))
+	g.Eventually(getSecretData("samlSigningCert")).Should(Equal(formatCertString(string(suppliedSigningCert))))
 	g.Eventually(getSecretData("samlSigningTruststore")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("samlSigningKeyLabel")).Should(Equal([]byte("default-metadata-from-supplied-certs-saml")))
-	g.Eventually(getSecretData("samlEncryptionCert")).Should(Equal(suppliedEncryptionCert))
+	g.Eventually(getSecretData("samlEncryptionCert")).Should(Equal(formatCertString(string(suppliedEncryptionCert))))
 	g.Eventually(getSecretData("metadataCATruststore")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("metadataCATruststoreBase64")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("metadataCACerts")).Should(Equal(bytes.Join([][]byte{fakeRootCert, fakeIntCert, fakeMetadataCert}, []byte("\n"))))
@@ -433,7 +433,6 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 	g.Eventually(getSecretData("hsmPassword")).Should(BeNil())
 	g.Eventually(getSecretData("hsmIP")).Should(BeNil())
 	g.Eventually(getSecretData("hsmCustomerCA.crt")).Should(BeNil())
-
 }
 
 func generateCertChain(t *testing.T, ctx context.Context, c client.Client, g *GomegaWithT) (*verifyv1beta1.CertificateRequest, *verifyv1beta1.CertificateRequest, *verifyv1beta1.CertificateRequest, func(t *testing.T)) {
