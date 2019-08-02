@@ -2,12 +2,13 @@ package awscloudhsm
 
 import (
 	"fmt"
-	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
+	"gopkg.in/yaml.v2"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
@@ -161,6 +162,7 @@ func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (s
 		"--hsm-saml-signing-key-label", request.SamlSigningKeyLabel,
 		samlSigningOption, tmpSAMLSigningCertPath,
 		"--supplied-saml-encryption-cert-file", tmpSAMLEncryptionCertPath,
+		"--validityDays", request.Data.ValidityDays,
 	)
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("HSM_USER=%s", request.HSMCreds.User),

@@ -64,6 +64,8 @@ spec:
                   type: string
                 samlSigningCertificate:
                   type: string
+                validityDays:
+                  type: string
               type: object
             enabled:
               type: boolean

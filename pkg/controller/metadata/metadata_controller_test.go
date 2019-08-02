@@ -140,6 +140,7 @@ func TestReconcile(t *testing.T) {
 				ContactGivenName: "jeff",
 				ContactSurname:   "jefferson",
 				ContactEmail:     "jeff@jeff.com",
+				ValidityDays:     "30",
 			},
 			CertificateAuthority: verifyv1beta1.CertificateAuthoritySpec{
 				SecretName: "meta",

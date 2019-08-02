@@ -35,6 +35,7 @@ type MetadataSigningSpec struct {
 	ContactEmail              string `json:"contactEmail,omitempty"`
 	SamlSigningCertificate    string `json:"samlSigningCertificate,omitempty"`
 	SamlEncryptionCertificate string `json:"samlEncryptionCertificate,omitempty"`
+	ValidityDays              string `json:"validityDays,omitempty"`
 }
 
 // MetadataSpec defines the desired state of Metadata
