@@ -230,7 +230,7 @@ func TestReconcile(t *testing.T) {
 	g.Eventually(getSecretData("hsmCustomerCA.crt")).Should(Equal(fakeCustomerCA))
 	g.Eventually(getSecretData("metadataCATruststore")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("metadataCATruststoreBase64")).ShouldNot(Equal([]byte{}))
-	g.Eventually(getSecretData("metadataCACerts")).Should(Equal(bytes.Join([][]byte{fakeRootCert, fakeIntCert, fakeMetadataCert}, []byte("\n"))))
+	g.Eventually(getSecretData("metadataCACerts")).Should(Equal(bytes.Join([][]byte{fakeRootCert, fakeIntCert}, []byte("\n"))))
 	g.Eventually(getSecretData("publishingPath")).Should(Equal([]byte("metadata.xml")))
 	// TODO: add the rest of the Secret fields here...
 
@@ -428,7 +428,7 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 	g.Eventually(getSecretData("samlEncryptionCert")).Should(Equal(formatCertString(string(suppliedEncryptionCert))))
 	g.Eventually(getSecretData("metadataCATruststore")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("metadataCATruststoreBase64")).ShouldNot(Equal([]byte{}))
-	g.Eventually(getSecretData("metadataCACerts")).Should(Equal(bytes.Join([][]byte{fakeRootCert, fakeIntCert, fakeMetadataCert}, []byte("\n"))))
+	g.Eventually(getSecretData("metadataCACerts")).Should(Equal(bytes.Join([][]byte{fakeRootCert, fakeIntCert}, []byte("\n"))))
 	g.Eventually(getSecretData("hsmUser")).Should(BeNil())
 	g.Eventually(getSecretData("hsmPassword")).Should(BeNil())
 	g.Eventually(getSecretData("hsmIP")).Should(BeNil())

@@ -216,7 +216,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 	if err != nil {
 		return nil, fmt.Errorf("generateMetadataSecretData: %s", err)
 	}
-	metadataCACertsConcat := bytes.Join(metadataCACerts, []byte("\n"))
+	metadataCACertsConcat := bytes.Join(metadataCACerts[1:], []byte("\n"))
 	metadataCATruststore, err := generateTruststore(metadataCACertsConcat, "ca", truststorePassword)
 	if err != nil {
 		return nil, err
