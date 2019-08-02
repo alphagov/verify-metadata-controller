@@ -49,6 +49,7 @@ import (
 const (
 	cloudHSMKeyType    = "cloudhsm"
 	metadataXMLKey     = "metadata.xml"
+	metadataCACertsKey = "metadataCACerts"
 	truststorePassword = "mashmallow"
 	VersionAnnotation  = "metadata-version"
 	beginTag           = "-----BEGIN CERTIFICATE-----\n"
@@ -311,7 +312,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"metadataSigningTruststore":         []byte(metadataSigningTruststore),
 		"metadataSigningTruststoreBase64":   []byte(base64.StdEncoding.EncodeToString(metadataSigningTruststore)),
 		"metadataSigningTruststorePassword": []byte(truststorePassword),
-		"metadataCACerts":                   []byte(metadataCACertsConcat),
+		metadataCACertsKey:                  []byte(metadataCACertsConcat),
 		"metadataCATruststore":              []byte(metadataCATruststore),
 		"metadataCATruststoreBase64":        []byte(base64.StdEncoding.EncodeToString(metadataCATruststore)),
 		"metadataCATruststorePassword":      []byte(metadataCATruststorePassword),
@@ -487,6 +488,11 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 									Name:      "data",
 									MountPath: fmt.Sprintf("/usr/share/nginx/html/%s", getPublishingPath(instance)),
 									SubPath:   metadataXMLKey,
+								},
+								{
+									Name:      "data",
+									MountPath: fmt.Sprintf("/usr/share/nginx/html/%s", getMetadataCACertsPublishingPath(instance)),
+									SubPath:   metadataCACertsKey,
 								},
 							},
 						},
@@ -665,6 +671,14 @@ func getPublishingPath(instance *verifyv1beta1.Metadata) string {
 		return instance.Spec.PublishingPath
 	} else {
 		return metadataXMLKey
+	}
+}
+
+func getMetadataCACertsPublishingPath(instance *verifyv1beta1.Metadata) string {
+	if instance.Spec.PublishingPath != "" {
+		return instance.Spec.PublishingPath + "SigningCertificates"
+	} else {
+		return metadataCACertsKey
 	}
 }
 
