@@ -54,6 +54,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
+import static uk.gov.ida.mdgen.MetadataGenerator.NodeType.connector;
+
 public class MetadataGenerator implements Callable<Void> {
     private final Logger LOG = LoggerFactory.getLogger(MetadataGenerator.class);
     private final Yaml yaml = new Yaml();
@@ -231,21 +233,15 @@ public class MetadataGenerator implements Callable<Void> {
     }
 
     private void updateSsoDescriptors(EntityDescriptor entityDescriptor) throws Exception {
-        addSamlSigningKeyDescriptor(getSsoDescriptor(entityDescriptor));
-        addSamlEncryptionDescriptor(getSsoDescriptor(entityDescriptor));
-    }
+        SSODescriptor ssoDescriptor = nodeType.equals(connector) ?
+                entityDescriptor.getSPSSODescriptor(SAMLConstants.SAML20P_NS) :
+                entityDescriptor.getIDPSSODescriptor(SAMLConstants.SAML20P_NS);
 
-    private SSODescriptor getSsoDescriptor(EntityDescriptor entityDescriptor) {
-        SSODescriptor spSso = null;
-        switch (nodeType) {
-            case connector:
-                spSso = entityDescriptor.getSPSSODescriptor(SAMLConstants.SAML20P_NS);
-                break;
-            case proxy:
-                spSso = entityDescriptor.getIDPSSODescriptor(SAMLConstants.SAML20P_NS);
-                break;
+        addSamlSigningKeyDescriptor(ssoDescriptor);
+
+        if (nodeType.equals(connector)) {
+            addSamlEncryptionDescriptor(ssoDescriptor);
         }
-        return spSso;
     }
 
     private void addSamlSigningKeyDescriptor(SSODescriptor spSso) throws Exception {
