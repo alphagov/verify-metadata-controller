@@ -41,6 +41,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.io.StringWriter;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.KeyStore;
@@ -51,6 +52,7 @@ import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.ECPublicKey;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
@@ -63,7 +65,8 @@ public class MetadataGenerator implements Callable<Void> {
     private BasicX509Credential metadataSigningCredential;
     private X509KeyInfoGeneratorFactory keyInfoGeneratorFactory;
 
-    enum NodeType { connector, proxy }
+    enum NodeType {connector, proxy}
+
     enum SigningAlgoType {
         rsa(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA256),
         rsapss(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA256_MGF1),
@@ -109,15 +112,13 @@ public class MetadataGenerator implements Callable<Void> {
 
         private static X509Certificate asCert() throws CertificateException {
             return metadataControllerSuppliedSamlSigningCert != null ?
-                    X509Support.decodeCertificate(metadataControllerSuppliedSamlSigningCert)
-                    :
-                    X509Support.decodeCertificate(manuallySuppliedSamlSigningCert)
-            ;
+                    X509Support.decodeCertificate(metadataControllerSuppliedSamlSigningCert) :
+                    X509Support.decodeCertificate(manuallySuppliedSamlSigningCert);
         }
     }
 
     @CommandLine.Option(names = "--supplied-saml-encryption-cert-file", description = "Public X509 cert for SAML encryption certificate supplied manually")
-    private File manuallySuppliedSamlEncryptionsCert;
+    private File manuallySuppliedSamlEncryptionCert;
 
     @CommandLine.Option(names = "--validityDays", description = "How many days the metadata is valid for (default 30 days)")
     private Integer validityDays = 30;
@@ -181,15 +182,15 @@ public class MetadataGenerator implements Callable<Void> {
     private BasicX509Credential getSigningCredentialFromCloudHSM(X509Certificate cert, String label) throws Exception {
         KeyStore cloudHsmStore = KeyStore.getInstance("Cavium");
         cloudHsmStore.load(null, null);
-        PrivateKey key = (PrivateKey)cloudHsmStore.getKey(label, null);
+        PrivateKey key = (PrivateKey) cloudHsmStore.getKey(label, null);
         return new BasicX509Credential(cert, key);
     }
 
-    private void setSecurityProvider() throws InstantiationException, IllegalAccessException, java.lang.reflect.InvocationTargetException, NoSuchMethodException, ClassNotFoundException {
+    private void setSecurityProvider() throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, ClassNotFoundException {
         Provider caviumProvider = (Provider) ClassLoader.getSystemClassLoader()
-            .loadClass("com.cavium.provider.CaviumProvider")
-            .getConstructor()
-            .newInstance();
+                .loadClass("com.cavium.provider.CaviumProvider")
+                .getConstructor()
+                .newInstance();
         Security.addProvider(caviumProvider);
         JCEMapper.setProviderId("Cavium");
     }
@@ -216,8 +217,8 @@ public class MetadataGenerator implements Callable<Void> {
     private void sign(EntityDescriptor entityDescriptor) throws SecurityException, MarshallingException, SignatureException {
         LOG.info("Attempting to sign metadata");
         LOG.info("\n  Algorithm: {}\n  Credential: {}\n",
-            signingAlgo.uri,
-            metadataSigningCredential.getEntityCertificate().getSubjectDN().getName());
+                signingAlgo.uri,
+                metadataSigningCredential.getEntityCertificate().getSubjectDN().getName());
 
         SignatureSigningParameters signingParams = new SignatureSigningParameters();
         signingParams.setSignatureAlgorithm(signingAlgo.uri);
@@ -228,19 +229,25 @@ public class MetadataGenerator implements Callable<Void> {
         SignatureSupport.signObject(entityDescriptor, signingParams);
 
         SAMLSignatureProfileValidator signatureProfileValidator = new SAMLSignatureProfileValidator();
-        signatureProfileValidator.validate(entityDescriptor.getSignature());
+        signatureProfileValidator.validate(Optional.ofNullable(entityDescriptor.getSignature()).orElseThrow(() -> new RuntimeException("Signature missing")));
         SignatureValidator.validate(entityDescriptor.getSignature(), metadataSigningCredential);
     }
 
-    private void updateSsoDescriptors(EntityDescriptor entityDescriptor) throws Exception {
-        SSODescriptor ssoDescriptor = nodeType.equals(connector) ?
-                entityDescriptor.getSPSSODescriptor(SAMLConstants.SAML20P_NS) :
-                entityDescriptor.getIDPSSODescriptor(SAMLConstants.SAML20P_NS);
+    private SSODescriptor getSsoDescriptor(EntityDescriptor entityDescriptor) {
+        switch (nodeType) {
+            case connector:
+                return entityDescriptor.getSPSSODescriptor(SAMLConstants.SAML20P_NS);
+            case proxy:
+                return entityDescriptor.getIDPSSODescriptor(SAMLConstants.SAML20P_NS);
+        }
+        return null;
+    }
 
-        addSamlSigningKeyDescriptor(ssoDescriptor);
+    private void updateSsoDescriptors(EntityDescriptor entityDescriptor) throws Exception {
+        addSamlSigningKeyDescriptor(getSsoDescriptor(entityDescriptor));
 
         if (nodeType.equals(connector)) {
-            addSamlEncryptionDescriptor(ssoDescriptor);
+            addSamlEncryptionDescriptor(getSsoDescriptor(entityDescriptor));
         }
     }
 
@@ -260,7 +267,7 @@ public class MetadataGenerator implements Callable<Void> {
     private void addSamlEncryptionDescriptor(SSODescriptor spSso) throws Exception {
         BasicX509Credential samlEncCredential;
         if (samlEncryptionCertIsFromHub()) {
-            samlEncCredential = new BasicX509Credential(decodeCertificate(manuallySuppliedSamlEncryptionsCert));
+            samlEncCredential = new BasicX509Credential(decodeCertificate(manuallySuppliedSamlEncryptionCert));
         } else {
             samlEncCredential = samlSigningCredential;
         }
@@ -268,7 +275,7 @@ public class MetadataGenerator implements Callable<Void> {
     }
 
     private boolean samlEncryptionCertIsFromHub() {
-        return manuallySuppliedSamlEncryptionsCert != null;
+        return manuallySuppliedSamlEncryptionCert != null;
     }
 
     private X509Certificate decodeCertificate(File certFile) throws CertificateException {
@@ -283,7 +290,6 @@ public class MetadataGenerator implements Callable<Void> {
     }
 
     private KeyInfo buildKeyInfo(Credential credential) throws SecurityException {
-        KeyInfo keyInfo = keyInfoGeneratorFactory.newInstance().generate(credential);
-        return keyInfo;
+        return keyInfoGeneratorFactory.newInstance().generate(credential);
     }
 }
