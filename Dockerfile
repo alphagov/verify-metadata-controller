@@ -15,15 +15,15 @@ FROM amazonlinux:2.0.20190212
 # Install AWS CloudHSM client and libs
 ENV CLOUDHSM_CLIENT_VERSION=2.0.3-3.el7
 RUN yum install -y wget tar gzip openssl \
- && wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-${CLOUDHSM_CLIENT_VERSION}.x86_64.rpm \
+ && wget --progress=bar:force https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-${CLOUDHSM_CLIENT_VERSION}.x86_64.rpm \
  && yum install -y ./cloudhsm-client-*.rpm \
  && rm ./cloudhsm-client-*.rpm \
- && wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-jce-${CLOUDHSM_CLIENT_VERSION}.x86_64.rpm \
+ && wget --progress=bar:force https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-jce-${CLOUDHSM_CLIENT_VERSION}.x86_64.rpm \
  && yum install -y ./cloudhsm-client-jce-*.rpm \
  && rm ./cloudhsm-client-jce-*.rpm \
- && wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-dyn-${CLOUDHSM_CLIENT_VERSION}.x86_64.rpm \
+ && wget --progress=bar:force https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-dyn-${CLOUDHSM_CLIENT_VERSION}.x86_64.rpm \
  && yum install -y ./cloudhsm-client-dyn-*.rpm \
- && wget https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_linux-x64_bin.tar.gz \
+ && wget --progress=bar:force https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_linux-x64_bin.tar.gz \
  && mkdir -p /usr/lib/jvm \
  && tar -C /usr/lib/jvm -xf ./openjdk-11.0.2*.tar.gz \
  && rm ./openjdk-11.0.2*.tar.gz \
@@ -43,7 +43,7 @@ COPY mdgen/build.gradle ./build.gradle
 COPY mdgen/settings.gradle ./settings.gradle
 COPY mdgen/gradle ./gradle
 COPY mdgen/src ./src
-RUN ./gradlew -Pcloudhsm --no-daemon installDist -x test
+RUN ./gradlew --console rich --parallel -Pcloudhsm --no-daemon test installDist
 
 # install cloudhsm tool (generates keys etc)
 WORKDIR /cloudhsmtool
@@ -53,7 +53,7 @@ COPY cloudhsmtool/build.gradle ./build.gradle
 COPY cloudhsmtool/settings.gradle ./settings.gradle
 COPY cloudhsmtool/gradle ./gradle
 COPY cloudhsmtool/src ./src
-RUN ./gradlew -Pcloudhsm --no-daemon installDist -x test
+RUN ./gradlew --console rich --parallel -Pcloudhsm --no-daemon test installDist
 
 # Copy the controller-manager into the image
 WORKDIR /
