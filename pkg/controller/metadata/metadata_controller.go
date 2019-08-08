@@ -290,6 +290,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 			ContactGivenName: instance.Spec.Data.ContactGivenName,
 			ContactSurname:   instance.Spec.Data.ContactSurname,
 			ContactEmail:     instance.Spec.Data.ContactEmail,
+			ValidityDays:     instance.Spec.Data.ValidityDays,
 		},
 	}
 	signedMetadata, err := r.hsm.GenerateAndSignMetadata(metadataRequest)

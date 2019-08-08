@@ -6,16 +6,19 @@ Kubernetes Custom Resource and Controller for generating and signing SAML metada
 
 ## Requirements
 
-- docker
+- [docker](https://www.docker.com/)
+- [minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/)
 - [kubebuilder](https://book.kubebuilder.io/quick-start.html#installation)
 - [kustomize](https://github.com/kubernetes-sigs/kustomize/blob/master/docs/INSTALL.md)
 - [gds-cli](https://github.com/alphagov/gds-cli)
+- [dep](https://github.com/golang/dep)
+- [counterfeiter](github.com/maxbrunsfeld/counterfeiter)
 
 ## Development
 
 Use `gds-cli` to update `kubeconfig` to refer to the target cluster:    
 
-`gds-cli <cluster> update-kubeconfig`
+`gds-cli <cluster e.g. (verify|sandbox)> update-kubeconfig`
 
 This will generate a `kubeconfig` in `~/.gds/<cluster>-<cluster>.kubeconfig`
 
@@ -25,7 +28,7 @@ Export this config:
 To build and deploy to a development environment:
 
 ```
-eval $(minikibe docker-env)     # point local docker commands at the engine in minikube 
+eval $(minikube docker-env)     # point local docker commands at the engine in minikube 
 make                            # regenerate controller/api after changes
 make docker-build               # build the controller image
 make deploy                     # install controller with kubectl 
@@ -34,6 +37,12 @@ make deploy                     # install controller with kubectl
 ```
 kubectl delete pod/verify-metadata-controller-controller-manager-0
 ```
+
+To get the project to run and build you need to place it under your `$GOROOT` which is typically set to `~/go/src/` the path for the project should look something like `~/go/src/github.com/alphagov/verify-metadata-controller`.
+
+Once you have dep installed you should be able to run `dep ensure` from the root of the project.
+Followed by `go get -u github.com/maxbrunsfeld/counterfeiter` this should be enough to get the project running.
+Simply now run `make` and see if it explodes.
 
 ## Test
 
