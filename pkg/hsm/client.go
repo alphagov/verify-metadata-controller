@@ -20,17 +20,17 @@ type GenerateMetadataRequest struct {
 }
 
 type MetadataRequestData struct {
-	EntityID         string `yaml:"entity_id"`
-	PostURL          string `yaml:"post_url"`
-	RedirectURL      string `yaml:"redirect_url"`
-	OrgName          string `yaml:"org_name"`
-	OrgDisplayName   string `yaml:"org_display_name"`
-	OrgURL           string `yaml:"org_url"`
-	ContactCompany   string `yaml:"contact_company"`
-	ContactGivenName string `yaml:"contact_given_name"`
-	ContactSurname   string `yaml:"contact_surname"`
-	ContactEmail     string `yaml:"contact_email"`
-	ValidityDays     string `yaml:"validity_days"`
+	EntityID          string `yaml:"entity_id"`
+	PostURL           string `yaml:"post_url"`
+	RedirectURL       string `yaml:"redirect_url"`
+	OrgName           string `yaml:"org_name"`
+	OrgDisplayName    string `yaml:"org_display_name"`
+	OrgURL            string `yaml:"org_url"`
+	ContactCompany    string `yaml:"contact_company"`
+	ContactGivenName  string `yaml:"contact_given_name"`
+	ContactSurname    string `yaml:"contact_surname"`
+	ContactEmail      string `yaml:"contact_email"`
+	ValidityTimestamp string `yaml:"validity_days"`
 }
 
 type Client interface {

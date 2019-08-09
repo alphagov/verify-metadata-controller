@@ -25,6 +25,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
 	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
@@ -265,6 +267,10 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 	}
 	samlSigningTruststorePassword := truststorePassword
 
+	certificateExpiry := time.Now().AddDate(0, 0, instance.Spec.Data.ValidityDays)
+
+	certificateExpiryTimestamp := certificateExpiry.Format(time.RFC1123)
+
 	metadataRequest := hsm.GenerateMetadataRequest{
 		MetadataSigningCert:     metadataSigningCert,
 		SAMLSigningCert:         samlSigningCert,
@@ -280,17 +286,17 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		},
 		Type: instance.Spec.Type,
 		Data: hsm.MetadataRequestData{
-			EntityID:         instance.Spec.Data.EntityID,
-			PostURL:          instance.Spec.Data.PostURL,
-			RedirectURL:      instance.Spec.Data.RedirectURL,
-			OrgName:          instance.Spec.Data.OrgName,
-			OrgDisplayName:   instance.Spec.Data.OrgDisplayName,
-			OrgURL:           instance.Spec.Data.OrgURL,
-			ContactCompany:   instance.Spec.Data.ContactCompany,
-			ContactGivenName: instance.Spec.Data.ContactGivenName,
-			ContactSurname:   instance.Spec.Data.ContactSurname,
-			ContactEmail:     instance.Spec.Data.ContactEmail,
-			ValidityDays:     instance.Spec.Data.ValidityDays,
+			EntityID:          instance.Spec.Data.EntityID,
+			PostURL:           instance.Spec.Data.PostURL,
+			RedirectURL:       instance.Spec.Data.RedirectURL,
+			OrgName:           instance.Spec.Data.OrgName,
+			OrgDisplayName:    instance.Spec.Data.OrgDisplayName,
+			OrgURL:            instance.Spec.Data.OrgURL,
+			ContactCompany:    instance.Spec.Data.ContactCompany,
+			ContactGivenName:  instance.Spec.Data.ContactGivenName,
+			ContactSurname:    instance.Spec.Data.ContactSurname,
+			ContactEmail:      instance.Spec.Data.ContactEmail,
+			ValidityTimestamp: certificateExpiryTimestamp,
 		},
 	}
 	signedMetadata, err := r.hsm.GenerateAndSignMetadata(metadataRequest)
@@ -326,6 +332,8 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"samlSigningKeyType":                []byte(cloudHSMKeyType),
 		"samlSigningKeyLabel":               []byte(samlSigningKeyLabel),
 		"samlEncryptionCert":                []byte(samlEncryptionCert),
+		"validityDays":                      []byte(strconv.Itoa(instance.Spec.Data.ValidityDays)),
+		"validUntil":                        []byte(certificateExpiryTimestamp),
 	}
 
 	if signingCertFromCertRequest {
