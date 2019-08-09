@@ -82,7 +82,7 @@ spec:
       icon: tag
       source:
         <<: *harbor_source
-        repository: registry.((cluster.domain))/eidas/cloudhsm
+        repository: registry.((cluster.domain))/eidas/cloudhsm-client
 
     jobs:
 
