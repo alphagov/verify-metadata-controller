@@ -443,7 +443,7 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 }
 
 func checkDateIsInRange(byteStrInputDate []byte) bool {
-	timeObjInputDate, _ := time.Parse(time.RFC1123, string(byteStrInputDate))
+	timeObjInputDate, _ := time.Parse(time.RFC1123Z, string(byteStrInputDate))
 
 	currentTime := time.Now().AddDate(0, 0, 30)
 

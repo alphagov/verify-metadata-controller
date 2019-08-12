@@ -6,6 +6,7 @@ import org.apache.xml.security.algorithms.JCEMapper;
 import org.apache.xml.security.signature.XMLSignature;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.joda.time.DateTime;
+import org.joda.time.format.DateTimeFormat;
 import org.opensaml.core.config.InitializationException;
 import org.opensaml.core.config.InitializationService;
 import org.opensaml.core.xml.io.MarshallingException;
@@ -59,6 +60,7 @@ import java.util.concurrent.Callable;
 import static uk.gov.ida.mdgen.MetadataGenerator.NodeType.connector;
 
 public class MetadataGenerator implements Callable<Void> {
+    private static final String RFC1123Z_FORMAT_PATTERN = "EEE, dd MMM yyyy H:m:s Z";
     private final Logger LOG = LoggerFactory.getLogger(MetadataGenerator.class);
     private final Yaml yaml = new Yaml();
     private BasicX509Credential samlSigningCredential;
@@ -120,8 +122,8 @@ public class MetadataGenerator implements Callable<Void> {
     @CommandLine.Option(names = "--supplied-saml-encryption-cert-file", description = "Public X509 cert for SAML encryption certificate supplied manually")
     private File manuallySuppliedSamlEncryptionCert;
 
-    @CommandLine.Option(names = "--validityTimestamp", description = "Expiry timestamp for metadata using ISO8601, e.g (2015-05-24T19:30:26.624Z)")
-    private String validityTimestamp = "2015-05-24T19:30:26.624Z";
+    @CommandLine.Option(names = "--validityTimestamp", description = "Expiry timestamp for metadata using RFC1123Z, e.g \"Mon, 02 Jan 2006 15:04:05 +0000\"")
+    private String validityTimestamp;
 
 
     public static void main(String[] args) throws InitializationException {
@@ -208,7 +210,7 @@ public class MetadataGenerator implements Callable<Void> {
         String xml = renderTemplate(nodeType.toString() + "_template.xml.mustache", yamlMap);
         EntityDescriptor entityDescriptor = ObjectUtils.unmarshall(new ByteArrayInputStream(xml.getBytes()), EntityDescriptor.class);
         entityDescriptor.setID(UUID.randomUUID().toString());
-        entityDescriptor.setValidUntil(new DateTime(validityTimestamp));
+        entityDescriptor.setValidUntil(DateTime.parse(validityTimestamp, DateTimeFormat.forPattern(RFC1123Z_FORMAT_PATTERN)));
         updateSsoDescriptors(entityDescriptor);
         sign(entityDescriptor);
         return entityDescriptor;

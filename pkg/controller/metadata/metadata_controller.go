@@ -269,7 +269,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 
 	certificateExpiry := time.Now().AddDate(0, 0, instance.Spec.Data.ValidityDays)
 
-	certificateExpiryTimestamp := certificateExpiry.Format(time.RFC1123)
+	certificateExpiryTimestamp := certificateExpiry.Format(time.RFC1123Z)
 
 	metadataRequest := hsm.GenerateMetadataRequest{
 		MetadataSigningCert:     metadataSigningCert,
