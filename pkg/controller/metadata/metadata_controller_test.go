@@ -19,11 +19,12 @@ package metadata
 import (
 	"bytes"
 	"io/ioutil"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"os"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"testing"
 	"time"
+
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
 	"github.com/alphagov/verify-metadata-controller/pkg/controller/certificaterequest"
@@ -140,7 +141,7 @@ func TestReconcile(t *testing.T) {
 				ContactGivenName: "jeff",
 				ContactSurname:   "jefferson",
 				ContactEmail:     "jeff@jeff.com",
-				ValidityDays:     "30",
+				ValidityDays:     30,
 			},
 			CertificateAuthority: verifyv1beta1.CertificateAuthoritySpec{
 				SecretName: "meta",
@@ -233,6 +234,11 @@ func TestReconcile(t *testing.T) {
 	g.Eventually(getSecretData("metadataCATruststoreBase64")).ShouldNot(Equal([]byte{}))
 	g.Eventually(getSecretData("metadataCACerts")).Should(Equal(bytes.Join([][]byte{fakeRootCert, fakeIntCert, fakeMetadataCert}, []byte("\n"))))
 	g.Eventually(getSecretData("publishingPath")).Should(Equal([]byte("metadata.xml")))
+	g.Eventually(getSecretData("validityDays")).Should(Equal([]byte("30")))
+
+	byteValidUntil, _ := getSecretData("validUntil")()
+
+	g.Eventually(checkDateIsInRange(byteValidUntil)).Should(Equal(true))
 	// TODO: add the rest of the Secret fields here...
 
 	// We expect a an nginx Deployment to be created with the same name
@@ -434,6 +440,17 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 	g.Eventually(getSecretData("hsmPassword")).Should(BeNil())
 	g.Eventually(getSecretData("hsmIP")).Should(BeNil())
 	g.Eventually(getSecretData("hsmCustomerCA.crt")).Should(BeNil())
+}
+
+func checkDateIsInRange(byteStrInputDate []byte) bool {
+	timeObjInputDate, _ := time.Parse(time.RFC1123Z, string(byteStrInputDate))
+
+	currentTime := time.Now().AddDate(0, 0, 30)
+
+	beforeTime := currentTime.Add(-30 * time.Second)
+	afterTime := currentTime.Add(30 * time.Second)
+
+	return timeObjInputDate.After(beforeTime) && timeObjInputDate.Before(afterTime)
 }
 
 func generateCertChain(t *testing.T, ctx context.Context, c client.Client, g *GomegaWithT) (*verifyv1beta1.CertificateRequest, *verifyv1beta1.CertificateRequest, *verifyv1beta1.CertificateRequest, func(t *testing.T)) {

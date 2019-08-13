@@ -1,5 +1,7 @@
 require 'nokogiri'
 
+NODE_XPATH = '//md:KeyDescriptor[@use="%s"]'
+
 AfterConfiguration() do
   system('rm -fr mdgen')
   system('unzip ../mdgen.zip')
@@ -56,13 +58,17 @@ Then("the file contains the supplied saml encryption certificate: {string}") do 
   expect(extracted_encryption_cert).to eq stripped_pem(pem_file)
 end
 
+Then("the file does not contain a saml encryption certificate") do
+    expect(extracted_encryption_cert).to eq "node not found: #{NODE_XPATH % ['encryption']}"
+end
+
 private
 def run_app(node_type, algorithm)
-  `java -classpath '/opt/cloudhsm/java/*:mdgen/lib/*' uk.gov.ida.mdgen.MetadataGenerator #{node_type} ../test/#{node_type}.yml ../test/test-metadata-signing-cert.pem --hsm-saml-signing-cert-file ../test/test-hsm-generated-saml-signing-cert.pem --hsm-saml-signing-key-label this-is-a-cloudhsmtool-thing --hsm-metadata-signing-key-label this-is-a-cloudhsmtool-thing --output ./metadata.xml 2>&1`
+  `java -classpath '/opt/cloudhsm/java/*:mdgen/lib/*' uk.gov.ida.mdgen.MetadataGenerator #{node_type} ../test/#{node_type}.yml ../test/test-metadata-signing-cert.pem --hsm-saml-signing-cert-file ../test/test-hsm-generated-saml-signing-cert.pem --hsm-saml-signing-key-label this-is-a-cloudhsmtool-thing --hsm-metadata-signing-key-label this-is-a-cloudhsmtool-thing --output ./metadata.xml --validityTimestamp "Mon, 02 Jan 2006 15:04:05 +0000" 2>&1`
 end
 
 def run_app_with_certs(node_type, algorithm, signing_cert, encryption_cert)
-  `java -classpath '/opt/cloudhsm/java/*:mdgen/lib/*' uk.gov.ida.mdgen.MetadataGenerator #{node_type} ../test/#{node_type}.yml ../test/test-metadata-signing-cert.pem --supplied-saml-signing-cert-file ../test/#{signing_cert} --supplied-saml-encryption-cert-file ../test/#{encryption_cert} --algorithm #{algorithm} --hsm-metadata-signing-key-label this-is-a-cloudhsmtool-thing --output ./metadata.xml 2>&1`
+  `java -classpath '/opt/cloudhsm/java/*:mdgen/lib/*' uk.gov.ida.mdgen.MetadataGenerator #{node_type} ../test/#{node_type}.yml ../test/test-metadata-signing-cert.pem --supplied-saml-signing-cert-file ../test/#{signing_cert} --supplied-saml-encryption-cert-file ../test/#{encryption_cert} --algorithm #{algorithm} --hsm-metadata-signing-key-label this-is-a-cloudhsmtool-thing --output ./metadata.xml --validityTimestamp "Mon, 02 Jan 2006 15:04:05 +0000" 2>&1`
 end
 
 def stripped_pem(pem_file)
@@ -73,11 +79,11 @@ def stripped_pem(pem_file)
 end
 
 def extracted_signing_cert
-  extract_node '//md:KeyDescriptor[@use="signing"]'
+  extract_node NODE_XPATH % ['signing']
 end
 
 def extracted_encryption_cert
-  extract_node '//md:KeyDescriptor[@use="encryption"]'
+  extract_node NODE_XPATH % ['encryption']
 end
 
 def extract_node(xpath)

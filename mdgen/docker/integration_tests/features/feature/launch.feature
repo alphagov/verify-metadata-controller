@@ -14,7 +14,7 @@ Feature: The java app
     When I run the java executable with correct parameters for the proxy node
     Then I see that the application outputs a file
     And the file contains the supplied saml signing certificate: "<cert>"
-    And the file contains the supplied saml encryption certificate: "<cert>"
+    And the file does not contain a saml encryption certificate
     Examples:
       | cert                                     |
       | test-hsm-generated-saml-signing-cert.pem |
