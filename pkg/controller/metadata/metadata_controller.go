@@ -53,7 +53,9 @@ const (
 	metadataXMLKey     = "metadata.xml"
 	metadataCACertsKey = "metadataCACerts"
 	truststorePassword = "mashmallow"
-	VersionAnnotation  = "metadata-version"
+	versionAnnotation  = "metadata-version"
+	validityDays       = "validityDays"
+	validUntil         = "validUntil"
 	beginTag           = "-----BEGIN CERTIFICATE-----\n"
 	endTag             = "\n-----END CERTIFICATE-----"
 )
@@ -336,8 +338,8 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"samlSigningKeyType":                []byte(cloudHSMKeyType),
 		"samlSigningKeyLabel":               []byte(samlSigningKeyLabel),
 		"samlEncryptionCert":                []byte(samlEncryptionCert),
-		"validityDays":                      []byte(strconv.Itoa(metadataValidityDays)),
-		"validUntil":                        []byte(metadataExpiryTimestamp),
+		validityDays:                        []byte(strconv.Itoa(metadataValidityDays)),
+		validUntil:                          []byte(metadataExpiryTimestamp),
 	}
 
 	if signingCertFromCertRequest {
@@ -349,6 +351,38 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 	}
 
 	return data, nil
+}
+
+// This function determines if we should regenerate the metadata or not.
+func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string) bool {
+	secretsMap := secretsObj.Data
+
+	// If the rest of the config has changed and the hash has changed, regenerate regardless.
+	if secretsObj.ObjectMeta.Annotations[versionAnnotation] != hashOfRequestSpec {
+		return true
+	}
+
+	// Checking the date from the secrets store to see if we need to regenerate the metadata.
+	byteValidityDays := secretsMap[validityDays]
+	byteValidUntil := secretsMap[validUntil]
+
+	// If theres nothing in the map then regenerate metadata.
+	if byteValidityDays == nil || byteValidUntil == nil {
+		return true
+	}
+
+	intValidityDays, errValidityDays := strconv.Atoi(string(byteValidityDays))
+	validUntilTimeStamp, errValidUntil := time.Parse(time.RFC1123Z, string(byteValidUntil))
+
+	if errValidUntil != nil || errValidityDays != nil {
+		return true
+	}
+
+	// We want to regenerate the metadata if it's at least halfway through its lifetime.
+	regeneratePastThisDate := time.Now().Add(time.Hour * time.Duration(12*intValidityDays))
+
+	// If the timestamp is less than half the metadata's lifetime away then regenerate it.
+	return validUntilTimeStamp.Before(regeneratePastThisDate)
 }
 
 // Reconcile reads that state of the cluster for a Metadata object and makes changes based on the state read
@@ -421,7 +455,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 				Name:      instance.Name,
 				Namespace: instance.Namespace,
 				Annotations: map[string]string{
-					VersionAnnotation: currentVersion,
+					versionAnnotation: currentVersion,
 				},
 			},
 			Type:       corev1.SecretTypeOpaque,
@@ -442,17 +476,17 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		)
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else if foundSecret.ObjectMeta.Annotations[VersionAnnotation] != currentVersion {
+	} else if ShouldRegenerate(foundSecret, currentVersion) {
 		log.Info("updating-secret",
 			"namespace", foundSecret.Namespace,
 			"name", foundSecret.Name,
-			"version", foundSecret.ObjectMeta.Annotations[VersionAnnotation],
+			"version", foundSecret.ObjectMeta.Annotations[versionAnnotation],
 		)
 		updatedData, err := r.generateMetadataSecretData(instance, metadataSigningSecret, &instance.Spec.CertificateAuthority)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		foundSecret.ObjectMeta.Annotations[VersionAnnotation] = currentVersion
+		foundSecret.ObjectMeta.Annotations[versionAnnotation] = currentVersion
 		foundSecret.Data = updatedData
 		err = r.Update(context.TODO(), foundSecret)
 		if err != nil {
@@ -474,7 +508,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 			Annotations: map[string]string{
-				VersionAnnotation: currentVersion,
+				versionAnnotation: currentVersion,
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -547,14 +581,14 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		)
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else if foundDeployment.ObjectMeta.Annotations[VersionAnnotation] != currentVersion {
+	} else if foundDeployment.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
 		log.Info("updating-deployment",
 			"namespace", metadataDeployment.Namespace,
 			"name", metadataDeployment.Name,
-			"version", foundDeployment.ObjectMeta.Annotations[VersionAnnotation],
+			"version", foundDeployment.ObjectMeta.Annotations[versionAnnotation],
 		)
 		foundDeployment.Spec = metadataDeployment.Spec
-		foundDeployment.ObjectMeta.Annotations[VersionAnnotation] = currentVersion
+		foundDeployment.ObjectMeta.Annotations[versionAnnotation] = currentVersion
 		err = r.Update(context.TODO(), foundDeployment)
 		if err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to update Deployment %s: %s", foundDeployment.Name, err)
@@ -571,7 +605,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 			Annotations: map[string]string{
-				VersionAnnotation: currentVersion,
+				versionAnnotation: currentVersion,
 			},
 		},
 		Spec: corev1.ServiceSpec{
@@ -610,13 +644,13 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		)
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else if foundService.ObjectMeta.Annotations[VersionAnnotation] != currentVersion {
+	} else if foundService.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
 		log.Info("updating-service",
 			"namespace", metadataService.Namespace,
 			"name", metadataService.Name,
-			"version", foundService.ObjectMeta.Annotations[VersionAnnotation],
+			"version", foundService.ObjectMeta.Annotations[versionAnnotation],
 		)
-		foundService.ObjectMeta.Annotations[VersionAnnotation] = currentVersion
+		foundService.ObjectMeta.Annotations[versionAnnotation] = currentVersion
 		foundService.Spec.Selector = metadataLabels
 		foundService.Spec.Ports = []corev1.ServicePort{
 			{
