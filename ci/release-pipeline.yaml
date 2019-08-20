@@ -94,6 +94,7 @@ spec:
         trigger: true
 
       - put: image
+        get_params: {skip_download: true}
         params:
           build: src
           tag_file: src/.git/short_ref
