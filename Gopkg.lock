@@ -10,7 +10,7 @@
   version = "v0.35.1"
 
 [[projects]]
-  digest = "1:fb2bc22501d0cabf20dd8cd4e87e26aac03195ee9eb09078a3338812a98aaf83"
+  digest = "1:6c4532e144405fe72f05ff5531930b23dd86f7f68ef657f65a2d8be9bc692795"
   name = "github.com/alphagov/verify-metadata-controller"
   packages = [
     "pkg/apis",
@@ -24,8 +24,8 @@
     "pkg/webhook",
   ]
   pruneopts = "T"
-  revision = "a20ea2fa1599a63630d38ee60b688739ad26a8e1"
-  version = "v1.120"
+  revision = "6142ec6dc83d196a91b7379c21dff15516d260f1"
+  version = "v1.174"
 
 [[projects]]
   digest = "1:464aef731a5f82ded547c62e249a2e9ec59fbbc9ddab53cda7b9857852630a61"

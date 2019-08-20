@@ -267,9 +267,13 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 	}
 	samlSigningTruststorePassword := truststorePassword
 
-	certificateExpiry := time.Now().AddDate(0, 0, instance.Spec.Data.ValidityDays)
+	metadataValidityDays := instance.Spec.Data.ValidityDays
+	if metadataValidityDays == 0 {
+		metadataValidityDays = 30
+	}
 
-	certificateExpiryTimestamp := certificateExpiry.Format(time.RFC1123Z)
+	metadataExpiryDatetime := time.Now().AddDate(0, 0, metadataValidityDays)
+	metadataExpiryTimestamp := metadataExpiryDatetime.Format(time.RFC1123Z)
 
 	metadataRequest := hsm.GenerateMetadataRequest{
 		MetadataSigningCert:     metadataSigningCert,
@@ -296,7 +300,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 			ContactGivenName:  instance.Spec.Data.ContactGivenName,
 			ContactSurname:    instance.Spec.Data.ContactSurname,
 			ContactEmail:      instance.Spec.Data.ContactEmail,
-			ValidityTimestamp: certificateExpiryTimestamp,
+			ValidityTimestamp: metadataExpiryTimestamp,
 		},
 	}
 	signedMetadata, err := r.hsm.GenerateAndSignMetadata(metadataRequest)
@@ -332,8 +336,8 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"samlSigningKeyType":                []byte(cloudHSMKeyType),
 		"samlSigningKeyLabel":               []byte(samlSigningKeyLabel),
 		"samlEncryptionCert":                []byte(samlEncryptionCert),
-		"validityDays":                      []byte(strconv.Itoa(instance.Spec.Data.ValidityDays)),
-		"validUntil":                        []byte(certificateExpiryTimestamp),
+		"validityDays":                      []byte(strconv.Itoa(metadataValidityDays)),
+		"validUntil":                        []byte(metadataExpiryTimestamp),
 	}
 
 	if signingCertFromCertRequest {
