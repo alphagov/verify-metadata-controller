@@ -364,7 +364,7 @@ func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, insta
 
 	// If the rest of the config has changed and the hash has changed, regenerate regardless.
 	if secretsObj.ObjectMeta.Annotations[versionAnnotation] != hashOfRequestSpec {
-		log.Info("Regenerating secret - hash's don't match")
+		log.Info("Regenerating secret - hashes don't match")
 		return true
 	}
 
@@ -555,13 +555,8 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "data",
-									MountPath: fmt.Sprintf("/usr/share/nginx/html/%s", getPublishingPath(instance)),
-									SubPath:   metadataXMLKey,
-								},
-								{
-									Name:      "data",
-									MountPath: fmt.Sprintf("/usr/share/nginx/html/%s", getMetadataCACertsPublishingPath(instance)),
-									SubPath:   metadataCACertsKey,
+									MountPath: "/usr/share/nginx/html",
+									ReadOnly:  true,
 								},
 							},
 						},
@@ -572,6 +567,16 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
 									SecretName: instance.Name,
+									Items: []corev1.KeyToPath{
+										{
+											Key:  metadataXMLKey,
+											Path: getPublishingPath(instance),
+										},
+										{
+											Key:  metadataCACertsKey,
+											Path: getMetadataCACertsPublishingPath(instance),
+										},
+									},
 								},
 							},
 						},
