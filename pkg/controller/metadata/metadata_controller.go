@@ -58,6 +58,7 @@ const (
 	validUntil         = "validUntil"
 	beginTag           = "-----BEGIN CERTIFICATE-----\n"
 	endTag             = "\n-----END CERTIFICATE-----"
+	requeueAfterNS     = 1800000000000
 )
 
 var log = logf.Log.WithName("controller")
@@ -671,7 +672,8 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		)
 	}
 
-	return reconcile.Result{}, nil
+	log.Info(fmt.Sprintf("Instance reconciliation complete - requeuing in %d seconds", requeueAfterNS/1000000000))
+	return reconcile.Result{RequeueAfter: requeueAfterNS}, nil
 }
 
 func generateTruststore(cert []byte, alias, storePass string) ([]byte, error) {
