@@ -564,47 +564,51 @@ func TestShouldRegenerate(t *testing.T) {
 
 	const ConstantHash = "Im a constant hash"
 
+	mockMetadata := verifyv1beta1.Metadata{}
+	mockMetadata.Namespace = "Namespace"
+	mockMetadata.Name = "Name"
+
 	mockSecrets := corev1.Secret{}
 	mockSecrets.ObjectMeta.Annotations = make(map[string]string)
 	mockSecrets.Data = make(map[string][]byte)
 
 	// Hashes should differ, so should be true to regenerate
 	mockSecrets.ObjectMeta.Annotations[versionAnnotation] = ""
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash)).Should(BeTrue())
+	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
 
 	// Hash should now match, but there is no data for the expiration, this simulates a upgrade.
 	mockSecrets.ObjectMeta.Annotations[versionAnnotation] = ConstantHash
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash)).Should(BeTrue())
+	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
 
 	// There should be a parse error.
 	mockSecrets.Data[validityDays] = []byte("30")
 	mockSecrets.Data[validUntil] = []byte("")
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash)).Should(BeTrue())
+	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
 
 	// Should regenerate as time is in the past.
 	mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, -1).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash)).Should(BeTrue())
+	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
 
 	// Should regenerate if half of the validity days.
 	mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, 15).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash)).Should(BeTrue())
+	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
 
 	// Shouldn't regenerate if more than half of the validity days.
 	mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, 15).Add(time.Duration(time.Minute)).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash)).Should(BeFalse())
+	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeFalse())
 
 	// Shouldn't regenerate as in the future.
 	mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, 60).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash)).Should(BeFalse())
+	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeFalse())
 
 	// Should work with odd values of validityDays
 	mockSecrets.Data[validityDays] = []byte("1")
 	mockSecrets.Data[validUntil] = []byte(time.Now().Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash)).Should(BeTrue())
+	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
 
 	mockSecrets.Data[validUntil] = []byte(time.Now().Add(time.Duration(time.Hour * 12)).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash)).Should(BeTrue())
+	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
 
 	mockSecrets.Data[validUntil] = []byte(time.Now().Add(time.Duration(time.Hour*12 + time.Minute)).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash)).Should(BeFalse())
+	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeFalse())
 }

@@ -355,11 +355,16 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 }
 
 // This function determines if we should regenerate the metadata or not.
-func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string) bool {
+func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, instance verifyv1beta1.Metadata) bool {
+	log.Info("Checking if metadata secret should be regenerated",
+		"namespace", instance.Namespace,
+		"name", instance.Name,
+	)
 	secretsMap := secretsObj.Data
 
 	// If the rest of the config has changed and the hash has changed, regenerate regardless.
 	if secretsObj.ObjectMeta.Annotations[versionAnnotation] != hashOfRequestSpec {
+		log.Info("Regenerating secret - hash's don't match")
 		return true
 	}
 
@@ -367,8 +372,9 @@ func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string) bool 
 	byteValidityDays := secretsMap[validityDays]
 	byteValidUntil := secretsMap[validUntil]
 
-	// If theres nothing in the map then regenerate metadata.
+	// If there's nothing in the map then regenerate metadata.
 	if byteValidityDays == nil || byteValidUntil == nil {
+		log.Info(fmt.Sprintf("Regenerating secret - either validityDays %q or validUntil %q are nil", byteValidityDays, byteValidUntil))
 		return true
 	}
 
@@ -376,6 +382,7 @@ func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string) bool 
 	validUntilTimeStamp, errValidUntil := time.Parse(time.RFC1123Z, string(byteValidUntil))
 
 	if errValidUntil != nil || errValidityDays != nil {
+		log.Info(fmt.Sprintf("Regenerating secret - unable to parse validityDays %q or validUntil %q", errValidityDays, errValidUntil))
 		return true
 	}
 
@@ -383,7 +390,9 @@ func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string) bool 
 	regeneratePastThisDate := time.Now().Add(time.Hour * time.Duration(12*intValidityDays))
 
 	// If the timestamp is less than half the metadata's lifetime away then regenerate it.
-	return validUntilTimeStamp.Before(regeneratePastThisDate)
+	regenerate := validUntilTimeStamp.Before(regeneratePastThisDate)
+	log.Info(fmt.Sprintf("Regenerating secret %t - validUntilTimeStamp %q not before regeneratePastThisDate %q", regenerate, validUntilTimeStamp, regeneratePastThisDate))
+	return regenerate
 }
 
 // Reconcile reads that state of the cluster for a Metadata object and makes changes based on the state read
@@ -405,11 +414,23 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		if errors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
 			// For additional cleanup logic use finalizers.
+			log.Info("Metadata reconcile failed - object not found",
+				"namespacedName", request.NamespacedName,
+			)
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
+		log.Info("Metadata reconcile failed - error reading object",
+			"namespacedName", request.NamespacedName,
+			"error", err,
+		)
 		return reconcile.Result{}, err
 	}
+
+	log.Info("Beginning Reconcile for metadata",
+		"namespace", instance.Namespace,
+		"name", instance.Name,
+	)
 
 	// Generate a hash of the metadata values
 	currentVersionInt, err := hashstructure.Hash(instance.Spec, nil)
@@ -477,7 +498,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		)
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else if ShouldRegenerate(foundSecret, currentVersion) {
+	} else if ShouldRegenerate(foundSecret, currentVersion, *instance) {
 		log.Info("updating-secret",
 			"namespace", foundSecret.Namespace,
 			"name", foundSecret.Name,
