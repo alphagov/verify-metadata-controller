@@ -24,20 +24,21 @@ spec:
       type: docker-image
       source:
         repository: govsvc/task-toolbox
-        tag: "1.2.0"
+        tag: 1.5.0
 
     resource_types:
 
     - name: github
       type: registry-image
       source:
-        repository: "govsvc/concourse-github-resource"
-        tag: "v0.0.1"
+        repository: govsvc/concourse-github-resource
+        tag: v0.0.1
 
     resources:
 
     - name: release
       type: github-release
+      icon: tag
       source:
         <<: *github_source
 
@@ -124,6 +125,3 @@ spec:
                 --app "${APP_NAME}" \
                 --diff-changes \
                 -f ./manifests/
-              # kubectl -n "${RELEASE_NAMESPACE}" apply -R -f ./manifests
-
-
