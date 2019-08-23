@@ -17,7 +17,7 @@ spec:
       github_api_token: ((github.api-token))
       access_token: ((github.api-token))
       approvers: ((trusted-developers.github-accounts))
-      required_approval_count: 2
+      required_approval_count: 0
       commit_verification_keys: ((trusted-developers.gpg-keys))
 
     harbor_source: &harbor_source
@@ -40,49 +40,64 @@ spec:
       type: docker-image
       source:
         repository: govsvc/task-toolbox
-        tag: "1.2.0"
+        tag: 1.5.0
+
+    image_tag: &image_tag
+      tag_file: src/.git/short_ref
+      tag_as_latest: true
+      tag_prefix: v
 
     resource_types:
 
     - name: github
       type: registry-image
       source:
-        repository: "govsvc/concourse-github-resource"
-        tag: "v0.0.3"
+        repository: govsvc/concourse-github-resource
+        tag: v0.0.3
 
     - name: harbor
       type: docker-image
       privileged: true
       source:
         repository: govsvc/gsp-harbor-docker-image-resource
-        tag: "0.0.1553882420"
+        tag: 0.0.1553882420
 
     resources:
 
     - name: src
       type: github
+      icon: github-circle
       source:
         <<: *github_source
-        branch: master
+        branch: sandbox
 
     - name: release
-      type: github-release
-      source:
-        <<: *github_source
-
-    - name: image
       type: harbor
       icon: tag
+      source:
+        <<: *harbor_source
+        repository: registry.((cluster.domain))/eidas/vmc-release
+
+    - name: vmc-image
+      type: harbor
+      icon: docker
       source:
         <<: *harbor_source
         repository: registry.((cluster.domain))/eidas/metadata-controller
 
     - name: cloudhsm-image
       type: harbor
-      icon: tag
+      icon: folder-key-network
       source:
         <<: *harbor_source
         repository: registry.((cluster.domain))/eidas/cloudhsm-client
+
+    - name: alpine-image
+      type: docker-image
+      icon: toolbox
+      source:
+        repository: alpine
+        tag: 3
 
     jobs:
 
@@ -93,13 +108,11 @@ spec:
       - get: src
         trigger: true
 
-      - put: image
+      - put: vmc-image
         get_params: {skip_download: true}
         params:
           build: src
-          tag_file: src/.git/short_ref
-          tag_as_latest: true
-          tag_prefix: v
+          <<: *image_tag
 
     - name: release
       serial: true
@@ -107,13 +120,17 @@ spec:
 
       - in_parallel:
         - get: src
-          passed: ["build"]
+          passed: [build]
           trigger: true
-        - get: image
-          passed: ["build"]
+        - get: vmc-image
+          passed: [build]
           trigger: true
+          params: {skip_download: true}
         - get: cloudhsm-image
           trigger: true
+          params: {skip_download: true}
+        - get: alpine-image
+          params: {rootfs: true}
 
       - task: generate-chart-values
         config:
@@ -121,55 +138,44 @@ spec:
           image_resource: *task_toolbox
           inputs:
           - name: src
-          - name: image
+          - name: vmc-image
           - name: cloudhsm-image
           outputs:
           - name: chart-values
           run:
             path: /bin/bash
             args:
-              - -eu
-              - -c
+              - -euc
               - |
-                echo "generating helm values for latest image versions..."
+                echo "Generating helm values for latest image versions..."
                 mkdir -p chart-values
                 cat << EOF > ./overrides.yaml
                 vmc:
                   image:
-                    repository: $(cat image/repository)@$(cat image/digest | cut -d ':' -f 1)
-                    tag: $(cat image/digest | cut -d ':' -f 2)
+                    repository: $(cat vmc-image/repository)@$(cat vmc-image/digest | cut -d ':' -f 1)
+                    tag: $(cat vmc-image/digest | cut -d ':' -f 2)
                 hsm:
                   image:
                     repository: $(cat cloudhsm-image/repository)@$(cat cloudhsm-image/digest | cut -d ':' -f 1)
                     tag: $(cat cloudhsm-image/digest | cut -d ':' -f 2)
                 EOF
-                echo "merging with chart values..."
+                echo "Merging with chart values..."
                 spruce merge ./src/chart/values.yaml ./overrides.yaml | tee -a chart-values/values.yaml
-
-      - get: release
 
       - task: generate-chart-version
         config:
           platform: linux
           image_resource: *task_toolbox
-          inputs:
-          - name: release
           outputs:
           - name: chart-version
-          params:
-            CLUSTER_DOMAIN: ((cluster.domain))
           run:
             path: /bin/bash
             args:
-            - -eu
-            - -c
+            - -euc
             - |
-              echo "bumping release number..."
-              CURRENT_TAG=$(cat release/tag)
-              awk -F. '/[0-9]+\./{$NF++;print}' OFS=. <<< "${CURRENT_TAG}" > chart-version/tag
-              NEW_TAG=$(cat chart-version/tag)
-              echo "${NEW_TAG}" > chart-version/name
-              cat chart-version/name
+              echo "Generating datetime-based Sandbox release number..."
+              echo "0.$(date +%Y%m%d).$(date +%I%M%S)" > chart-version/tag
+              cat chart-version/tag
 
       - task: generate-chart-package
         config:
@@ -186,22 +192,21 @@ spec:
           run:
             path: /bin/bash
             args:
-            - -eu
-            - -c
+            - -euc
             - |
-              echo "preparing keyring..."
+              echo "Preparing keyring..."
               echo "${CLUSTER_PRIVATE_KEY}" > key
               gpg --import key
               gpg --export-secret-keys > ~/.gnupg/pubring.gpg
               KEY_ID="$(gpg --list-secret-keys --with-colons  | awk -F: '/uid:/ {print $10}' | head -n1)"
-              echo "building chart with release values..."
+              echo "Building chart with release values..."
               CHART_NAME=$(yq . < ./src/chart/Chart.yaml | jq -r .name)
               cp -r "./src/chart" "./${CHART_NAME}"
               cp "./chart-values/values.yaml" "./${CHART_NAME}/values.yaml"
               mkdir -p chart-package
               APP_VERSION=$(cat ./src/.git/short_ref)
               CHART_VERSION=$(cat ./chart-version/tag)
-              echo "generating signed (${KEY_ID}) helm package for ${CHART_NAME} at app-version: '${APP_VERSION}' chart-version: '${CHART_VERSION}'..."
+              echo "Generating signed (${KEY_ID}) helm package for ${CHART_NAME} at app-version: '${APP_VERSION}' chart-version: '${CHART_VERSION}'..."
               helm package \
                 --app-version "${APP_VERSION}" \
                 --version "${CHART_VERSION}" \
@@ -210,14 +215,32 @@ spec:
                 --sign \
                 --key "${KEY_ID}" \
                 "./${CHART_NAME}"
-              echo "verifying package signature..."
+              echo "Verifying package signature..."
               helm verify ./chart-package/*.tgz
               echo "OK!"
 
-      - put: release
-        params:
-          name: chart-version/name
-          tag: chart-version/tag
-          globs:
-          - chart-package/*
+      - task: package-release
+        config:
+          platform: linux
+          image_resource: *task_toolbox
+          inputs:
+          - name: chart-package
+          - name: chart-version
+          - name: alpine-image
+          outputs:
+          - name: alpine-image
+          run:
+            path: /bin/bash
+            args:
+            - -euc
+            - |
+              mkdir -p vmc-chart-package
+              cp chart-version/tag vmc-chart-package/
+              cp -r chart-package/* vmc-chart-package/
+              tar -rf alpine-image/rootfs.tar vmc-chart-package/
 
+      - put: release
+        get_params: {skip_download: true}
+        params:
+          import_file: alpine-image/rootfs.tar
+          <<: *image_tag
