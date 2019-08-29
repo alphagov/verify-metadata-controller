@@ -18,6 +18,7 @@ spec:
   template:
     metadata:
       labels:
+        talksToHsm: "true"
         app.kubernetes.io/name: vmc
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
