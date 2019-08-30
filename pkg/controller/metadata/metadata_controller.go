@@ -1,12 +1,9 @@
 /*
 Copyright 2019 GDS.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
 	http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -132,6 +129,256 @@ type ReconcileMetadata struct {
 	client.Client
 	scheme *runtime.Scheme
 	hsm    hsm.Client
+}
+
+// Reconcile reads that state of the cluster for a Metadata object and makes changes based on the state read
+// and what is in the Metadata.Spec
+// Automatically generate RBAC rules to allow the Controller to read and write Deployments
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=,resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=,resources=secrets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=,resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=,resources=services/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=verify.gov.uk,resources=metadata,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=verify.gov.uk,resources=metadata/status,verbs=get;update;patch
+func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+	// Fetch the Metadata instance
+	instance := &verifyv1beta1.Metadata{}
+	err := r.Get(context.TODO(), request.NamespacedName, instance)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Object not found, return.  Created objects are automatically garbage collected.
+			// For additional cleanup logic use finalizers.
+			logInfoRequest("Metadata reconcile failed - object not found", request)
+			return reconcile.Result{}, nil
+		}
+		// Error reading the object - requeue the request.
+		logInfoRequest("Metadata reconcile failed - error reading object", request, "error", err)
+		return reconcile.Result{}, err
+	}
+
+	logInfo("Beginning Reconcile for metadata", instance.ObjectMeta)
+
+	// Generate a hash of the metadata values
+	currentVersionInt, err := hashstructure.Hash(instance.Spec, nil)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	currentVersion := fmt.Sprintf("%d", currentVersionInt)
+	logInfo("Hash of metadata values", instance.ObjectMeta, "hashValue", currentVersion)
+
+	// lookup certificate authority data
+	metadataSigningSecret := &corev1.Secret{}
+	err = r.Get(context.TODO(), types.NamespacedName{
+		Name:      instance.Spec.CertificateAuthority.SecretName,
+		Namespace: instance.Spec.CertificateAuthority.Namespace,
+	}, metadataSigningSecret)
+	if err != nil && errors.IsNotFound(err) {
+		return reconcile.Result{}, fmt.Errorf("certificateAuthority Secret '%s' not found in namespace '%s'", instance.Spec.CertificateAuthority.SecretName, instance.Spec.CertificateAuthority.Namespace)
+	} else if err != nil {
+		return reconcile.Result{}, fmt.Errorf("certificateAuthority Secret '%s' in namespace '%s': %s", instance.Spec.CertificateAuthority.SecretName, instance.Spec.CertificateAuthority.Namespace, err)
+	}
+
+	// Find or create metadataSecret
+	foundSecret := &corev1.Secret{}
+	err = r.Get(context.TODO(), types.NamespacedName{
+		Name:      instance.Name,
+		Namespace: instance.Namespace,
+	}, foundSecret)
+	if err != nil && errors.IsNotFound(err) {
+		logInfo("Creating metadata secret (secret was not found)", instance.ObjectMeta, "version", currentVersion)
+		metadataSecretData, err := r.generateMetadataSecretData(instance, metadataSigningSecret, &instance.Spec.CertificateAuthority)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		metadataSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      instance.Name,
+				Namespace: instance.Namespace,
+				Annotations: map[string]string{
+					versionAnnotation: currentVersion,
+				},
+			},
+			Type:       corev1.SecretTypeOpaque,
+			StringData: map[string]string{},
+			Data:       metadataSecretData,
+		}
+		if err := controllerutil.SetControllerReference(instance, metadataSecret, r.scheme); err != nil {
+			return reconcile.Result{}, err
+		}
+		err = r.Create(context.TODO(), metadataSecret)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to create Secret %s: %s", metadataSecret.Name, err)
+		}
+		logInfo("Created metadata secret", metadataSecret.ObjectMeta, "version", currentVersion)
+	} else if err != nil {
+		return reconcile.Result{}, err
+	} else if ShouldRegenerate(foundSecret, currentVersion, *instance) {
+		logInfo("Updating metadata secret", foundSecret.ObjectMeta, "version", foundSecret.ObjectMeta.Annotations[versionAnnotation])
+		updatedData, err := r.generateMetadataSecretData(instance, metadataSigningSecret, &instance.Spec.CertificateAuthority)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		foundSecret.ObjectMeta.Annotations[versionAnnotation] = currentVersion
+		foundSecret.Data = updatedData
+		err = r.Update(context.TODO(), foundSecret)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to update Secret %s: %s", foundSecret.ObjectMeta.Name, err)
+		}
+		logInfo("Updated metadata secret", foundSecret.ObjectMeta, "version", currentVersion)
+	} else {
+		logInfo("Metadata up-to-date, not regenerating at this time", instance.ObjectMeta)
+	}
+
+	metadataLabels := map[string]string{
+		"deployment": instance.Name,
+	}
+
+	metadataDeployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      instance.Name,
+			Namespace: instance.Namespace,
+			Annotations: map[string]string{
+				versionAnnotation: currentVersion,
+			},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: metadataLabels,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: metadataLabels,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "nginx",
+							Image: "nginx",
+							Ports: []corev1.ContainerPort{
+								{
+									Name:          "http",
+									ContainerPort: 80,
+								},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      "data",
+									MountPath: "/usr/share/nginx/html",
+									ReadOnly:  true,
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "data",
+							VolumeSource: corev1.VolumeSource{
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: instance.Name,
+									Items: []corev1.KeyToPath{
+										{
+											Key:  metadataXMLKey,
+											Path: getPublishingPath(instance),
+										},
+										{
+											Key:  metadataCACertsKey,
+											Path: getMetadataCACertsPublishingPath(instance),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	if err := controllerutil.SetControllerReference(instance, metadataDeployment, r.scheme); err != nil {
+		return reconcile.Result{}, err
+	}
+	// Find or create metadataDeployment
+	foundDeployment := &appsv1.Deployment{}
+	err = r.Get(context.TODO(), types.NamespacedName{Name: metadataDeployment.Name, Namespace: metadataDeployment.Namespace}, foundDeployment)
+	if err != nil && errors.IsNotFound(err) {
+		logInfo("Creating metadata deployment", metadataDeployment.ObjectMeta, "version", currentVersion)
+		err = r.Create(context.TODO(), metadataDeployment)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to create Deployment %s: %s", metadataDeployment.Name, err)
+		}
+		logInfo("Created metadata deployment", metadataDeployment.ObjectMeta, "version", currentVersion)
+	} else if err != nil {
+		return reconcile.Result{}, err
+	} else if foundDeployment.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
+		logInfo("Updating metadata deployment", metadataDeployment.ObjectMeta, "version", foundDeployment.ObjectMeta.Annotations[versionAnnotation])
+		foundDeployment.Spec = metadataDeployment.Spec
+		foundDeployment.ObjectMeta.Annotations[versionAnnotation] = currentVersion
+		err = r.Update(context.TODO(), foundDeployment)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to update Deployment %s: %s", foundDeployment.Name, err)
+		}
+		logInfo("Updated metadata deployment", metadataDeployment.ObjectMeta, "version", currentVersion)
+	}
+
+	metadataService := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      instance.Name,
+			Namespace: instance.Namespace,
+			Annotations: map[string]string{
+				versionAnnotation: currentVersion,
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: metadataLabels,
+			Ports: []corev1.ServicePort{
+				{
+					Protocol:   "TCP",
+					Port:       80,
+					Name:       "http",
+					TargetPort: intstr.FromInt(80),
+				},
+			},
+		},
+	}
+	if err := controllerutil.SetControllerReference(instance, metadataService, r.scheme); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Find or create metadataService
+	foundService := &corev1.Service{}
+	err = r.Get(context.TODO(), types.NamespacedName{Name: metadataService.Name, Namespace: metadataService.Namespace}, foundService)
+	if err != nil && errors.IsNotFound(err) {
+		logInfo("Creating metadata service", metadataService.ObjectMeta, "version", currentVersion)
+		err = r.Create(context.TODO(), metadataService)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to create Service %s: %s", metadataService.Name, err)
+		}
+		logInfo("Created metadata service", metadataService.ObjectMeta, "version", currentVersion)
+	} else if err != nil {
+		return reconcile.Result{}, err
+	} else if foundService.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
+		logInfo("Updating metadata service", metadataService.ObjectMeta, "version", foundService.ObjectMeta.Annotations[versionAnnotation])
+		foundService.ObjectMeta.Annotations[versionAnnotation] = currentVersion
+		foundService.Spec.Selector = metadataLabels
+		foundService.Spec.Ports = []corev1.ServicePort{
+			{
+				Protocol:   "TCP",
+				Port:       80,
+				Name:       "http",
+				TargetPort: intstr.FromInt(80),
+			},
+		}
+		err = r.Update(context.TODO(), foundService)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to update Service %s: %s", foundService.Name, err)
+		}
+		logInfo("Updated metadata service", metadataService.ObjectMeta, "version", currentVersion)
+	}
+
+	logInfo(fmt.Sprintf("Instance reconciliation complete - requeuing in %d seconds (%d minutes)",
+		requeueAfterNS/1000000000, requeueAfterNS/1000000000/60), instance.ObjectMeta)
+	return reconcile.Result{RequeueAfter: requeueAfterNS}, nil
 }
 
 func (r *ReconcileMetadata) getCACerts(ctx context.Context, name, namespace string) ([][]byte, error) {
@@ -396,256 +643,6 @@ func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, insta
 	regenerate := validUntilTimeStamp.Before(regeneratePastThisDate)
 	logInfo(fmt.Sprintf("Regenerating secret %t - validUntilTimeStamp %q not before regeneratePastThisDate %q", regenerate, validUntilTimeStamp, regeneratePastThisDate), instance.ObjectMeta)
 	return regenerate
-}
-
-// Reconcile reads that state of the cluster for a Metadata object and makes changes based on the state read
-// and what is in the Metadata.Spec
-// Automatically generate RBAC rules to allow the Controller to read and write Deployments
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=,resources=secrets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=,resources=secrets/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=,resources=services,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=,resources=services/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=verify.gov.uk,resources=metadata,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=verify.gov.uk,resources=metadata/status,verbs=get;update;patch
-func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	// Fetch the Metadata instance
-	instance := &verifyv1beta1.Metadata{}
-	err := r.Get(context.TODO(), request.NamespacedName, instance)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			// Object not found, return.  Created objects are automatically garbage collected.
-			// For additional cleanup logic use finalizers.
-			logInfoRequest("Metadata reconcile failed - object not found", request)
-			return reconcile.Result{}, nil
-		}
-		// Error reading the object - requeue the request.
-		logInfoRequest("Metadata reconcile failed - error reading object", request, "error", err)
-		return reconcile.Result{}, err
-	}
-
-	logInfo("Beginning Reconcile for metadata", instance.ObjectMeta)
-
-	// Generate a hash of the metadata values
-	currentVersionInt, err := hashstructure.Hash(instance.Spec, nil)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-	currentVersion := fmt.Sprintf("%d", currentVersionInt)
-	logInfo("Hash of metadata values", instance.ObjectMeta, "hashValue", currentVersion)
-
-	// lookup certificate authority data
-	metadataSigningSecret := &corev1.Secret{}
-	err = r.Get(context.TODO(), types.NamespacedName{
-		Name:      instance.Spec.CertificateAuthority.SecretName,
-		Namespace: instance.Spec.CertificateAuthority.Namespace,
-	}, metadataSigningSecret)
-	if err != nil && errors.IsNotFound(err) {
-		return reconcile.Result{}, fmt.Errorf("certificateAuthority Secret '%s' not found in namespace '%s'", instance.Spec.CertificateAuthority.SecretName, instance.Spec.CertificateAuthority.Namespace)
-	} else if err != nil {
-		return reconcile.Result{}, fmt.Errorf("certificateAuthority Secret '%s' in namespace '%s': %s", instance.Spec.CertificateAuthority.SecretName, instance.Spec.CertificateAuthority.Namespace, err)
-	}
-
-	// Find or create metadataSecret
-	foundSecret := &corev1.Secret{}
-	err = r.Get(context.TODO(), types.NamespacedName{
-		Name:      instance.Name,
-		Namespace: instance.Namespace,
-	}, foundSecret)
-	if err != nil && errors.IsNotFound(err) {
-		logInfo("Creating metadata secret (secret was not found)", instance.ObjectMeta, "version", currentVersion)
-		metadataSecretData, err := r.generateMetadataSecretData(instance, metadataSigningSecret, &instance.Spec.CertificateAuthority)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		metadataSecret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      instance.Name,
-				Namespace: instance.Namespace,
-				Annotations: map[string]string{
-					versionAnnotation: currentVersion,
-				},
-			},
-			Type:       corev1.SecretTypeOpaque,
-			StringData: map[string]string{},
-			Data:       metadataSecretData,
-		}
-		if err := controllerutil.SetControllerReference(instance, metadataSecret, r.scheme); err != nil {
-			return reconcile.Result{}, err
-		}
-		err = r.Create(context.TODO(), metadataSecret)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to create Secret %s: %s", metadataSecret.Name, err)
-		}
-		logInfo("Created metadata secret", metadataSecret.ObjectMeta, "version", currentVersion)
-	} else if err != nil {
-		return reconcile.Result{}, err
-	} else if ShouldRegenerate(foundSecret, currentVersion, *instance) {
-		logInfo("Updating metadata secret", foundSecret.ObjectMeta, "version", foundSecret.ObjectMeta.Annotations[versionAnnotation])
-		updatedData, err := r.generateMetadataSecretData(instance, metadataSigningSecret, &instance.Spec.CertificateAuthority)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		foundSecret.ObjectMeta.Annotations[versionAnnotation] = currentVersion
-		foundSecret.Data = updatedData
-		err = r.Update(context.TODO(), foundSecret)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to update Secret %s: %s", foundSecret.ObjectMeta.Name, err)
-		}
-		logInfo("Updated metadata secret", foundSecret.ObjectMeta, "version", currentVersion)
-	} else {
-		logInfo("Metadata up-to-date, not regenerating at this time", instance.ObjectMeta)
-	}
-
-	metadataLabels := map[string]string{
-		"deployment": instance.Name,
-	}
-
-	metadataDeployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
-			Annotations: map[string]string{
-				versionAnnotation: currentVersion,
-			},
-		},
-		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: metadataLabels,
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: metadataLabels,
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "nginx",
-							Image: "nginx",
-							Ports: []corev1.ContainerPort{
-								{
-									Name:          "http",
-									ContainerPort: 80,
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "data",
-									MountPath: "/usr/share/nginx/html",
-									ReadOnly:  true,
-								},
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "data",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: instance.Name,
-									Items: []corev1.KeyToPath{
-										{
-											Key:  metadataXMLKey,
-											Path: getPublishingPath(instance),
-										},
-										{
-											Key:  metadataCACertsKey,
-											Path: getMetadataCACertsPublishingPath(instance),
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-	if err := controllerutil.SetControllerReference(instance, metadataDeployment, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
-	// Find or create metadataDeployment
-	foundDeployment := &appsv1.Deployment{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: metadataDeployment.Name, Namespace: metadataDeployment.Namespace}, foundDeployment)
-	if err != nil && errors.IsNotFound(err) {
-		logInfo("Creating metadata deployment", metadataDeployment.ObjectMeta, "version", currentVersion)
-		err = r.Create(context.TODO(), metadataDeployment)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to create Deployment %s: %s", metadataDeployment.Name, err)
-		}
-		logInfo("Created metadata deployment", metadataDeployment.ObjectMeta, "version", currentVersion)
-	} else if err != nil {
-		return reconcile.Result{}, err
-	} else if foundDeployment.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
-		logInfo("Updating metadata deployment", metadataDeployment.ObjectMeta, "version", foundDeployment.ObjectMeta.Annotations[versionAnnotation])
-		foundDeployment.Spec = metadataDeployment.Spec
-		foundDeployment.ObjectMeta.Annotations[versionAnnotation] = currentVersion
-		err = r.Update(context.TODO(), foundDeployment)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to update Deployment %s: %s", foundDeployment.Name, err)
-		}
-		logInfo("Updated metadata deployment", metadataDeployment.ObjectMeta, "version", currentVersion)
-	}
-
-	metadataService := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
-			Annotations: map[string]string{
-				versionAnnotation: currentVersion,
-			},
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: metadataLabels,
-			Ports: []corev1.ServicePort{
-				{
-					Protocol:   "TCP",
-					Port:       80,
-					Name:       "http",
-					TargetPort: intstr.FromInt(80),
-				},
-			},
-		},
-	}
-	if err := controllerutil.SetControllerReference(instance, metadataService, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
-
-	// Find or create metadataService
-	foundService := &corev1.Service{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: metadataService.Name, Namespace: metadataService.Namespace}, foundService)
-	if err != nil && errors.IsNotFound(err) {
-		logInfo("Creating metadata service", metadataService.ObjectMeta, "version", currentVersion)
-		err = r.Create(context.TODO(), metadataService)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to create Service %s: %s", metadataService.Name, err)
-		}
-		logInfo("Created metadata service", metadataService.ObjectMeta, "version", currentVersion)
-	} else if err != nil {
-		return reconcile.Result{}, err
-	} else if foundService.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
-		logInfo("Updating metadata service", metadataService.ObjectMeta, "version", foundService.ObjectMeta.Annotations[versionAnnotation])
-		foundService.ObjectMeta.Annotations[versionAnnotation] = currentVersion
-		foundService.Spec.Selector = metadataLabels
-		foundService.Spec.Ports = []corev1.ServicePort{
-			{
-				Protocol:   "TCP",
-				Port:       80,
-				Name:       "http",
-				TargetPort: intstr.FromInt(80),
-			},
-		}
-		err = r.Update(context.TODO(), foundService)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to update Service %s: %s", foundService.Name, err)
-		}
-		logInfo("Updated metadata service", metadataService.ObjectMeta, "version", currentVersion)
-	}
-
-	logInfo(fmt.Sprintf("Instance reconciliation complete - requeuing in %d seconds (%d minutes)",
-		requeueAfterNS/1000000000, requeueAfterNS/1000000000/60), instance.ObjectMeta)
-	return reconcile.Result{RequeueAfter: requeueAfterNS}, nil
 }
 
 func generateTruststore(cert []byte, alias, storePass string, instance *verifyv1beta1.Metadata) ([]byte, error) {
