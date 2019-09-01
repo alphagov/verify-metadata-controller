@@ -184,6 +184,8 @@ func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (s
 
 	log.Info("mdgen-done",
 		"metadata", string(metadata),
+		"metadataSigningKeyLabel", request.MetadataSigningKeyLabel,
+		"samlSigningKeyLabel", request.SamlSigningKeyLabel,
 	)
 	return metadata, nil
 }
