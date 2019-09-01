@@ -10,24 +10,6 @@
   version = "v0.35.1"
 
 [[projects]]
-  digest = "1:6c4532e144405fe72f05ff5531930b23dd86f7f68ef657f65a2d8be9bc692795"
-  name = "github.com/alphagov/verify-metadata-controller"
-  packages = [
-    "pkg/apis",
-    "pkg/apis/verify/v1beta1",
-    "pkg/controller",
-    "pkg/controller/certificaterequest",
-    "pkg/controller/metadata",
-    "pkg/hsm",
-    "pkg/hsm/awscloudhsm",
-    "pkg/hsm/hsmfakes",
-    "pkg/webhook",
-  ]
-  pruneopts = "T"
-  revision = "6142ec6dc83d196a91b7379c21dff15516d260f1"
-  version = "v1.174"
-
-[[projects]]
   digest = "1:464aef731a5f82ded547c62e249a2e9ec59fbbc9ddab53cda7b9857852630a61"
   name = "github.com/appscode/jsonpatch"
   packages = ["."]
@@ -961,15 +943,6 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
-    "github.com/alphagov/verify-metadata-controller/pkg/apis",
-    "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1",
-    "github.com/alphagov/verify-metadata-controller/pkg/controller",
-    "github.com/alphagov/verify-metadata-controller/pkg/controller/certificaterequest",
-    "github.com/alphagov/verify-metadata-controller/pkg/controller/metadata",
-    "github.com/alphagov/verify-metadata-controller/pkg/hsm",
-    "github.com/alphagov/verify-metadata-controller/pkg/hsm/awscloudhsm",
-    "github.com/alphagov/verify-metadata-controller/pkg/hsm/hsmfakes",
-    "github.com/alphagov/verify-metadata-controller/pkg/webhook",
     "github.com/emicklei/go-restful",
     "github.com/mitchellh/hashstructure",
     "github.com/onsi/ginkgo",
