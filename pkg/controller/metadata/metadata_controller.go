@@ -208,7 +208,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 	if metadataSigningKeyLabel == nil {
 		return nil, fmt.Errorf("no 'label' value in metadataSigningSecret '%s'", metadataSigningSecret.ObjectMeta.Name)
 	}
-	metadataSigningTruststore, err := generateTruststore(metadataSigningCert, string(metadataSigningKeyLabel), truststorePassword)
+	metadataSigningTruststore, err := generateTruststore(metadataSigningCert, string(metadataSigningKeyLabel), truststorePassword, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		metadataCACertsConcat = metadataCACerts[0]
 	}
 
-	metadataCATruststore, err := generateTruststore(metadataCACertsConcat, "ca", truststorePassword)
+	metadataCATruststore, err := generateTruststore(metadataCACertsConcat, "ca", truststorePassword, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +270,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 	}
 
 	// TODO do we need this truststore? If so, do we need an encryption one?
-	samlSigningTruststore, err := generateTruststore(samlSigningCert, samlSigningKeyLabel, truststorePassword)
+	samlSigningTruststore, err := generateTruststore(samlSigningCert, samlSigningKeyLabel, truststorePassword, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -362,15 +362,12 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 
 // This function determines if we should regenerate the metadata or not.
 func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, instance verifyv1beta1.Metadata) bool {
-	log.Info("Checking if metadata secret should be regenerated",
-		"namespace", instance.Namespace,
-		"name", instance.Name,
-	)
+	logInfo("Checking if metadata secret should be regenerated", instance.ObjectMeta)
 	secretsMap := secretsObj.Data
 
 	// If the rest of the config has changed and the hash has changed, regenerate regardless.
 	if secretsObj.ObjectMeta.Annotations[versionAnnotation] != hashOfRequestSpec {
-		log.Info("Regenerating secret - hashes don't match")
+		logInfo("Regenerating secret - hashes don't match", instance.ObjectMeta)
 		return true
 	}
 
@@ -380,7 +377,7 @@ func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, insta
 
 	// If there's nothing in the map then regenerate metadata.
 	if byteValidityDays == nil || byteValidUntil == nil {
-		log.Info(fmt.Sprintf("Regenerating secret - either validityDays %q or validUntil %q are nil", byteValidityDays, byteValidUntil))
+		logInfo(fmt.Sprintf("Regenerating secret - either validityDays %q or validUntil %q are nil", byteValidityDays, byteValidUntil), instance.ObjectMeta)
 		return true
 	}
 
@@ -388,7 +385,7 @@ func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, insta
 	validUntilTimeStamp, errValidUntil := time.Parse(time.RFC1123Z, string(byteValidUntil))
 
 	if errValidUntil != nil || errValidityDays != nil {
-		log.Info(fmt.Sprintf("Regenerating secret - unable to parse validityDays %q or validUntil %q", errValidityDays, errValidUntil))
+		logInfo(fmt.Sprintf("Regenerating secret - unable to parse validityDays %q or validUntil %q", errValidityDays, errValidUntil), instance.ObjectMeta)
 		return true
 	}
 
@@ -397,7 +394,7 @@ func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, insta
 
 	// If the timestamp is less than half the metadata's lifetime away then regenerate it.
 	regenerate := validUntilTimeStamp.Before(regeneratePastThisDate)
-	log.Info(fmt.Sprintf("Regenerating secret %t - validUntilTimeStamp %q not before regeneratePastThisDate %q", regenerate, validUntilTimeStamp, regeneratePastThisDate))
+	logInfo(fmt.Sprintf("Regenerating secret %t - validUntilTimeStamp %q not before regeneratePastThisDate %q", regenerate, validUntilTimeStamp, regeneratePastThisDate), instance.ObjectMeta)
 	return regenerate
 }
 
@@ -420,23 +417,15 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		if errors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
 			// For additional cleanup logic use finalizers.
-			log.Info("Metadata reconcile failed - object not found",
-				"namespacedName", request.NamespacedName,
-			)
+			logInfoRequest("Metadata reconcile failed - object not found", request)
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
-		log.Info("Metadata reconcile failed - error reading object",
-			"namespacedName", request.NamespacedName,
-			"error", err,
-		)
+		logInfoRequest("Metadata reconcile failed - error reading object", request, "error", err)
 		return reconcile.Result{}, err
 	}
 
-	log.Info("Beginning Reconcile for metadata",
-		"namespace", instance.Namespace,
-		"name", instance.Name,
-	)
+	logInfo("Beginning Reconcile for metadata", instance.ObjectMeta)
 
 	// Generate a hash of the metadata values
 	currentVersionInt, err := hashstructure.Hash(instance.Spec, nil)
@@ -444,11 +433,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, err
 	}
 	currentVersion := fmt.Sprintf("%d", currentVersionInt)
-	log.Info("Hash of metadata values",
-		"namespace", instance.Namespace,
-		"hashValue", currentVersion,
-		"name", instance.Name,
-	)
+	logInfo("Hash of metadata values", instance.ObjectMeta, "hashValue", currentVersion)
 
 	// lookup certificate authority data
 	metadataSigningSecret := &corev1.Secret{}
@@ -469,11 +454,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		Namespace: instance.Namespace,
 	}, foundSecret)
 	if err != nil && errors.IsNotFound(err) {
-		log.Info("creating-secret",
-			"namespace", instance.Namespace,
-			"name", instance.Name,
-			"version", currentVersion,
-		)
+		logInfo("Creating metadata secret (secret was not found)", instance.ObjectMeta, "version", currentVersion)
 		metadataSecretData, err := r.generateMetadataSecretData(instance, metadataSigningSecret, &instance.Spec.CertificateAuthority)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -497,19 +478,11 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		if err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to create Secret %s: %s", metadataSecret.Name, err)
 		}
-		log.Info("created-secret",
-			"namespace", metadataSecret.Namespace,
-			"name", metadataSecret.Name,
-			"version", currentVersion,
-		)
+		logInfo("Created metadata secret", metadataSecret.ObjectMeta, "version", currentVersion)
 	} else if err != nil {
 		return reconcile.Result{}, err
 	} else if ShouldRegenerate(foundSecret, currentVersion, *instance) {
-		log.Info("updating-secret",
-			"namespace", foundSecret.Namespace,
-			"name", foundSecret.Name,
-			"version", foundSecret.ObjectMeta.Annotations[versionAnnotation],
-		)
+		logInfo("Updating metadata secret", foundSecret.ObjectMeta, "version", foundSecret.ObjectMeta.Annotations[versionAnnotation])
 		updatedData, err := r.generateMetadataSecretData(instance, metadataSigningSecret, &instance.Spec.CertificateAuthority)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -520,11 +493,9 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		if err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to update Secret %s: %s", foundSecret.ObjectMeta.Name, err)
 		}
-		log.Info("updated-secret",
-			"namespace", foundSecret.Namespace,
-			"name", foundSecret.Name,
-			"version", currentVersion,
-		)
+		logInfo("Updated metadata secret", foundSecret.ObjectMeta, "version", currentVersion)
+	} else {
+		logInfo("Metadata up-to-date, not regenerating at this time", instance.ObjectMeta)
 	}
 
 	metadataLabels := map[string]string{
@@ -598,39 +569,23 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	foundDeployment := &appsv1.Deployment{}
 	err = r.Get(context.TODO(), types.NamespacedName{Name: metadataDeployment.Name, Namespace: metadataDeployment.Namespace}, foundDeployment)
 	if err != nil && errors.IsNotFound(err) {
-		log.Info("creating-deployment",
-			"namespace", metadataDeployment.Namespace,
-			"name", metadataDeployment.Name,
-			"version", currentVersion,
-		)
+		logInfo("Creating metadata deployment", metadataDeployment.ObjectMeta, "version", currentVersion)
 		err = r.Create(context.TODO(), metadataDeployment)
 		if err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to create Deployment %s: %s", metadataDeployment.Name, err)
 		}
-		log.Info("created-deployment",
-			"namespace", metadataDeployment.Namespace,
-			"name", metadataDeployment.Name,
-			"version", currentVersion,
-		)
+		logInfo("Created metadata deployment", metadataDeployment.ObjectMeta, "version", currentVersion)
 	} else if err != nil {
 		return reconcile.Result{}, err
 	} else if foundDeployment.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
-		log.Info("updating-deployment",
-			"namespace", metadataDeployment.Namespace,
-			"name", metadataDeployment.Name,
-			"version", foundDeployment.ObjectMeta.Annotations[versionAnnotation],
-		)
+		logInfo("Updating metadata deployment", metadataDeployment.ObjectMeta, "version", foundDeployment.ObjectMeta.Annotations[versionAnnotation])
 		foundDeployment.Spec = metadataDeployment.Spec
 		foundDeployment.ObjectMeta.Annotations[versionAnnotation] = currentVersion
 		err = r.Update(context.TODO(), foundDeployment)
 		if err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to update Deployment %s: %s", foundDeployment.Name, err)
 		}
-		log.Info("updated-deployment",
-			"namespace", metadataDeployment.Namespace,
-			"name", metadataDeployment.Name,
-			"version", currentVersion,
-		)
+		logInfo("Updated metadata deployment", metadataDeployment.ObjectMeta, "version", currentVersion)
 	}
 
 	metadataService := &corev1.Service{
@@ -661,28 +616,16 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 	foundService := &corev1.Service{}
 	err = r.Get(context.TODO(), types.NamespacedName{Name: metadataService.Name, Namespace: metadataService.Namespace}, foundService)
 	if err != nil && errors.IsNotFound(err) {
-		log.Info("creating-service",
-			"namespace", metadataService.Namespace,
-			"name", metadataService.Name,
-			"version", currentVersion,
-		)
+		logInfo("Creating metadata service", metadataService.ObjectMeta, "version", currentVersion)
 		err = r.Create(context.TODO(), metadataService)
 		if err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to create Service %s: %s", metadataService.Name, err)
 		}
-		log.Info("created-service",
-			"namespace", metadataService.Namespace,
-			"name", metadataService.Name,
-			"version", currentVersion,
-		)
+		logInfo("Created metadata service", metadataService.ObjectMeta, "version", currentVersion)
 	} else if err != nil {
 		return reconcile.Result{}, err
 	} else if foundService.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
-		log.Info("updating-service",
-			"namespace", metadataService.Namespace,
-			"name", metadataService.Name,
-			"version", foundService.ObjectMeta.Annotations[versionAnnotation],
-		)
+		logInfo("Updating metadata service", metadataService.ObjectMeta, "version", foundService.ObjectMeta.Annotations[versionAnnotation])
 		foundService.ObjectMeta.Annotations[versionAnnotation] = currentVersion
 		foundService.Spec.Selector = metadataLabels
 		foundService.Spec.Ports = []corev1.ServicePort{
@@ -697,18 +640,15 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		if err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to update Service %s: %s", foundService.Name, err)
 		}
-		log.Info("updated-service",
-			"namespace", metadataService.Namespace,
-			"name", metadataService.Name,
-			"version", currentVersion,
-		)
+		logInfo("Updated metadata service", metadataService.ObjectMeta, "version", currentVersion)
 	}
 
-	log.Info(fmt.Sprintf("Instance reconciliation complete - requeuing in %d seconds", requeueAfterNS/1000000000))
+	logInfo(fmt.Sprintf("Instance reconciliation complete - requeuing in %d seconds (%d minutes)",
+		requeueAfterNS/1000000000, requeueAfterNS/1000000000/60), instance.ObjectMeta)
 	return reconcile.Result{RequeueAfter: requeueAfterNS}, nil
 }
 
-func generateTruststore(cert []byte, alias, storePass string) ([]byte, error) {
+func generateTruststore(cert []byte, alias, storePass string, instance *verifyv1beta1.Metadata) ([]byte, error) {
 	exe, err := exec.LookPath("keytool")
 	if err != nil {
 		return nil, err
@@ -724,9 +664,7 @@ func generateTruststore(cert []byte, alias, storePass string) ([]byte, error) {
 		return nil, err
 	}
 	// .truststore  -trustcacerts -file hsm-proxynode-signing-cert.pem
-	log.Info("generating-truststore",
-		"alias", alias,
-	)
+	logInfo("Generating truststore", instance.ObjectMeta, "alias", alias)
 	cmd := exec.Command(exe,
 		"-import",
 		"-noprompt",
@@ -765,4 +703,12 @@ func getMetadataCACertsPublishingPath(instance *verifyv1beta1.Metadata) string {
 
 func formatCertString(certString string) []byte {
 	return []byte(beginTag + certString + endTag)
+}
+
+func logInfo(msg string, metadata metav1.ObjectMeta, additionalKeysAndValues ...interface{}) {
+	log.Info(msg, append(additionalKeysAndValues, "namespace", metadata.Namespace, "name", metadata.Name)...)
+}
+
+func logInfoRequest(msg string, request reconcile.Request, additionalKeysAndValues ...interface{}) {
+	log.Info(msg, append(additionalKeysAndValues, "namespace", request.Namespace, "name", request.Name)...)
 }
