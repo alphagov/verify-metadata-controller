@@ -39,7 +39,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-const timeout = time.Second * 5
+const (
+	timeout      = time.Second * 5
+	constantHash = "deadbeef"
+)
 
 func TestReconcile(t *testing.T) {
 	ctx := context.Background()
@@ -463,55 +466,125 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 func TestShouldRegenerate(t *testing.T) {
 	g := NewGomegaWithT(t)
 
-	const ConstantHash = "Im a constant hash"
+	t.Run("Hashes should differ, so should be true to regenerate", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
 
-	mockMetadata := verifyv1beta1.Metadata{}
+		mockSecrets.ObjectMeta.Annotations[versionAnnotation] = ""
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+	})
+
+	t.Run("Hash should now match, but there is no data for the expiration, this simulates a upgrade.", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		mockSecrets.Data[validityDays] = nil
+		mockSecrets.Data[validUntil] = nil
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+	})
+
+	t.Run("There should be a parse error.", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		mockSecrets.Data[validUntil] = []byte("")
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+	})
+
+	t.Run("Should regenerate as validUntil is in the past.", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, -1).Format(time.RFC1123Z))
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+	})
+
+	t.Run("Should regenerate if half of the metadata validity days remain.", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, 15).Format(time.RFC1123Z))
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+	})
+
+	t.Run("Shouldn't regenerate if more than half of the metadata validity days remain.", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeFalse())
+	})
+
+	t.Run("Should work with odd values of validityDays", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		mockSecrets.Data[validityDays] = []byte("1")
+		mockSecrets.Data[validUntil] = []byte(time.Now().Format(time.RFC1123Z))
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+	})
+
+	t.Run("Should regenerate for validity of one day when less than 12 hours validity remaining", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		mockSecrets.Data[validityDays] = []byte("1")
+		mockSecrets.Data[validUntil] = []byte(time.Now().Add(time.Duration(time.Hour * 12)).Format(time.RFC1123Z))
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+	})
+
+	t.Run("Should not regenerate for validity of one day when more than 12 hours validity remaining", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		mockSecrets.Data[validityDays] = []byte("1")
+		mockSecrets.Data[validUntil] = []byte(time.Now().Add(time.Duration(time.Hour*12 + time.Minute)).Format(time.RFC1123Z))
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeFalse())
+	})
+
+	t.Run("Should regenerate if generating SAML signing cert, and the cert is not parsable", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		mockSecrets.Data[samlSigningCertKey] = []byte("This is not a certificate")
+		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{}
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+	})
+
+	t.Run("Should regenerate if generating SAML signing cert, and existing cert is too old", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		oldCert, _ := ioutil.ReadFile("test.metadata.signing.crt")
+		mockSecrets.Data[samlSigningCertKey] = []byte(oldCert)
+		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{}
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, time.Duration(time.Hour))).To(BeTrue())
+	})
+
+	t.Run("Should not regenerate if using generated SAML signing cert and existing cert is still good", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		oldCert, _ := ioutil.ReadFile("test.metadata.signing.crt")
+		mockSecrets.Data["samlSigningCert"] = []byte(oldCert)
+		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{}
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, time.Hour*24*time.Duration(1000))).To(BeFalse())
+	})
+}
+
+func returnNonRegeneratingMetadataAndSecret() (mockMetadata verifyv1beta1.Metadata, mockSecrets corev1.Secret) {
+	mockMetadata = verifyv1beta1.Metadata{}
 	mockMetadata.Namespace = "Namespace"
 	mockMetadata.Name = "Name"
 
-	mockSecrets := corev1.Secret{}
-	mockSecrets.ObjectMeta.Annotations = make(map[string]string)
-	mockSecrets.Data = make(map[string][]byte)
+	mockSecrets = corev1.Secret{}
+	mockSecrets.ObjectMeta.Annotations = map[string]string{
+		versionAnnotation: constantHash,
+	}
+	mockSecrets.Data = map[string][]byte{
+		validUntil:   []byte(time.Now().AddDate(0, 0, 15).Add(time.Duration(time.Minute)).Format(time.RFC1123Z)),
+		validityDays: []byte("30"),
+	}
 
-	// Hashes should differ, so should be true to regenerate
-	mockSecrets.ObjectMeta.Annotations[versionAnnotation] = ""
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	// Hash should now match, but there is no data for the expiration, this simulates a upgrade.
-	mockSecrets.ObjectMeta.Annotations[versionAnnotation] = ConstantHash
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	// There should be a parse error.
-	mockSecrets.Data[validityDays] = []byte("30")
-	mockSecrets.Data[validUntil] = []byte("")
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	// Should regenerate as time is in the past.
-	mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, -1).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	// Should regenerate if half of the validity days.
-	mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, 15).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	// Shouldn't regenerate if more than half of the validity days.
-	mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, 15).Add(time.Duration(time.Minute)).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeFalse())
-
-	// Shouldn't regenerate as in the future.
-	mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, 60).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeFalse())
-
-	// Should work with odd values of validityDays
-	mockSecrets.Data[validityDays] = []byte("1")
-	mockSecrets.Data[validUntil] = []byte(time.Now().Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	mockSecrets.Data[validUntil] = []byte(time.Now().Add(time.Duration(time.Hour * 12)).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	mockSecrets.Data[validUntil] = []byte(time.Now().Add(time.Duration(time.Hour*12 + time.Minute)).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeFalse())
+	return
 }
 
 func checkDateIsInRange(t *testing.T, byteStrInputDate []byte) bool {

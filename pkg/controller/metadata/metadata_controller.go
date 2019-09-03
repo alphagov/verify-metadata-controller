@@ -59,7 +59,7 @@ const (
 	endTag                      = "\n-----END CERTIFICATE-----"
 	requeueAfterNS              = 1800000000000
 	samlSigningCertSuffix       = "-saml-signing-cert"
-	samlSigningCertLife         = time.Hour * 24 * time.Duration(1)
+	samlSigningCertLife         = time.Hour * 24 * time.Duration(90)
 	samlSigningCertKey          = "signingCertificate"
 	samlSigningCertNotBeforeKey = "notBefore"
 )
@@ -220,7 +220,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		logInfo("Created metadata secret", metadataSecret.ObjectMeta, "version", currentVersion)
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else if ShouldRegenerate(foundSecret, currentVersion, *instance) {
+	} else if shouldRegenerate(foundSecret, currentVersion, *instance, samlSigningCertLife) {
 		logInfo("Updating metadata secret", foundSecret.ObjectMeta, "version", foundSecret.ObjectMeta.Annotations[versionAnnotation])
 		updatedData, err := r.generateMetadataSecretData(instance, metadataSigningSecret, &instance.Spec.CertificateAuthority)
 		if err != nil {
@@ -638,12 +638,13 @@ func (r *ReconcileMetadata) findOrCreateSamlSigningCert(instance *verifyv1beta1.
 
 	} else if err != nil {
 		return nil, err
-	} else if olderThan(samlSigningCertLife, currentSigningCertConfigMap.Data[samlSigningCertNotBeforeKey]) {
+	} else if olderThan(samlSigningCertLife, string(currentSigningCertConfigMap.BinaryData[samlSigningCertNotBeforeKey])) {
 		logInfo("saml-signing-cert too old, updating configMap for saml-signing-cert",
 			instance.ObjectMeta,
-			"notBefore", currentSigningCertConfigMap.Data[samlSigningCertNotBeforeKey],
+			"notBefore", string(currentSigningCertConfigMap.BinaryData[samlSigningCertNotBeforeKey]),
 			"samlSigningCertLife", samlSigningCertLife,
 			"configMap", configMapName,
+			"configMapData", currentSigningCertConfigMap.BinaryData,
 		)
 
 		binaryData, err := r.generateSamlSigningCertData(instance, samlSigningKeyLabel, samlSigningCreds)
@@ -701,6 +702,9 @@ func (r *ReconcileMetadata) generateSamlSigningCertData(instance *verifyv1beta1.
 
 func extractNotBeforeDate(cert []byte) (string, error) {
 	pemBlock, _ := pem.Decode(cert)
+	if pemBlock == nil {
+		return "", fmt.Errorf("no saml signing cert found in cert: %q", cert)
+	}
 	parsedCert, err := x509.ParseCertificate(pemBlock.Bytes)
 	if err != nil {
 		return "", fmt.Errorf("unable to parse saml signing cert: %s", err)
@@ -716,7 +720,7 @@ func olderThan(duration time.Duration, timeStamp string) bool {
 }
 
 // This function determines if we should regenerate the metadata or not.
-func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, instance verifyv1beta1.Metadata) bool {
+func shouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, instance verifyv1beta1.Metadata, certLife time.Duration) bool {
 	logInfo("Checking if metadata secret should be regenerated", instance.ObjectMeta)
 	secretsMap := secretsObj.Data
 
@@ -739,7 +743,7 @@ func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, insta
 	// If we're generating self signed SAML signing certs with the HSM
 	if instance.Spec.SAMLSigningCertificate != nil {
 		samlSigningCertNotBefore, err := extractNotBeforeDate(secretsMap["samlSigningCert"])
-		if err != nil {
+		if err != nil || samlSigningCertNotBefore == "" {
 			logInfo("Regenerating secret - unable to parse SAML signing cert",
 				instance.ObjectMeta,
 				"cert", secretsMap["samlSigningCert"],
@@ -748,8 +752,8 @@ func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, insta
 			return true
 		}
 
-		if olderThan(samlSigningCertLife, samlSigningCertNotBefore) {
-			logInfo("Regenerating secret - SAML signing cert older than 90 days",
+		if olderThan(certLife, samlSigningCertNotBefore) {
+			logInfo(fmt.Sprintf("Regenerating secret - SAML signing cert older than %s", samlSigningCertLife),
 				instance.ObjectMeta,
 				"notBefore", samlSigningCertNotBefore,
 			)
