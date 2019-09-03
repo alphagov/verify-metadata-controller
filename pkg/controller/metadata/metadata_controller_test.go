@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -169,6 +170,24 @@ func TestReconcile(t *testing.T) {
 	// * once to create the self signed SAML cert's keypair
 	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(4))
 
+	// We expect a configMap containing the SAML signing certificate to have been created
+	certConfigMap := &corev1.ConfigMap{}
+	certConfigMapNamespacedName := types.NamespacedName{
+		Name:      metadataResource.ObjectMeta.Name + samlSigningCertSuffix,
+		Namespace: metadataResource.ObjectMeta.Namespace,
+	}
+	g.Eventually(func() error {
+		return c.Get(
+			ctx,
+			certConfigMapNamespacedName,
+			certConfigMap,
+		)
+	}).Should(Succeed())
+	g.Expect(certConfigMap.BinaryData[samlSigningCertKey]).Should(Equal(fakeSamlCert))
+	defer func() {
+		c.Delete(ctx, certConfigMap)
+	}()
+
 	// We expect a Secret to be created
 	secretResource := &corev1.Secret{}
 	getSecretResource := func() error {
@@ -247,6 +266,17 @@ func TestReconcile(t *testing.T) {
 
 	// After updating the Metadata Reconcile should have been called again
 	g.Eventually(reconcileMetadataCallCount, timeout).Should(Equal(2))
+
+	// We expect the configMap containing the SAML signing certificate to remain the same
+	afterUpdateCertConfigMap := &corev1.ConfigMap{}
+	g.Eventually(func() error {
+		return c.Get(
+			ctx,
+			certConfigMapNamespacedName,
+			afterUpdateCertConfigMap,
+		)
+	}).Should(Succeed())
+	g.Expect(reflect.DeepEqual(certConfigMap, afterUpdateCertConfigMap)).To(BeTrue())
 
 	// We expect the Secret data field(s) to get updated
 	g.Eventually(getSecretData("postURL")).Should(Equal([]byte("https://new-post-url/")))
@@ -374,6 +404,20 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 		Name:      metadataResource.ObjectMeta.Name,
 		Namespace: metadataResource.ObjectMeta.Namespace,
 	}
+
+	// We expect a configMap containing the SAML signing certificate NOT to have been created
+	certConfigMap := &corev1.ConfigMap{}
+	certConfigMapNamespacedName := types.NamespacedName{
+		Name:      metadataResource.ObjectMeta.Name + samlSigningCertSuffix,
+		Namespace: metadataResource.ObjectMeta.Namespace,
+	}
+	g.Eventually(func() error {
+		return c.Get(
+			ctx,
+			certConfigMapNamespacedName,
+			certConfigMap,
+		)
+	}).ShouldNot(Succeed())
 
 	// We expect a Secret to be created
 	secretResource := &corev1.Secret{}
