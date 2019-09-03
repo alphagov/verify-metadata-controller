@@ -67,6 +67,7 @@ func TestReconcile(t *testing.T) {
 	hsmClient.CreateSelfSignedCertReturnsOnCall(0, fakeRootCert, nil)
 	hsmClient.CreateSelfSignedCertReturnsOnCall(1, fakeSamlCert, nil)
 	hsmClient.CreateSelfSignedCertReturnsOnCall(2, fakeSamlCert, nil)
+	hsmClient.CreateSelfSignedCertReturnsOnCall(3, fakeSamlCert, nil)
 	hsmClient.CreateChainedCertReturnsOnCall(0, fakeIntCert, nil)
 	hsmClient.CreateChainedCertReturnsOnCall(1, fakeMetadataCert, nil)
 	hsmClient.CreateChainedCertReturnsOnCall(2, fakeMetadataCert, nil)
@@ -86,40 +87,12 @@ func TestReconcile(t *testing.T) {
 		mgrStopped.Wait()
 	}()
 
-	rootCertReq, intCertReq, metaCertReq, tearDownCerts := generateCertChain(t, ctx, c, g)
+	tearDownCerts := generateCertChain(t, ctx, c, g)
 	defer tearDownCerts(t)
 
 	// The Reconcile function should have been called twice by now
 	g.Eventually(reconcileCertRequestCallCount, timeout).Should(Equal(3))
 	g.Consistently(reconcileCertRequestCallCount, timeout).Should(Equal(3))
-
-	// expect a secret to exist for root cert req
-	g.Eventually(func() error {
-		name := types.NamespacedName{
-			Name:      rootCertReq.ObjectMeta.Name,
-			Namespace: rootCertReq.ObjectMeta.Namespace,
-		}
-		s := &corev1.Secret{}
-		return c.Get(ctx, name, s)
-	}).Should(Succeed())
-	// expect a secret to exist for intermediate cert req
-	g.Eventually(func() error {
-		name := types.NamespacedName{
-			Name:      intCertReq.ObjectMeta.Name,
-			Namespace: intCertReq.ObjectMeta.Namespace,
-		}
-		s := &corev1.Secret{}
-		return c.Get(ctx, name, s)
-	}).Should(Succeed())
-	// expect a secret to exist for metadata cert req
-	g.Eventually(func() error {
-		name := types.NamespacedName{
-			Name:      metaCertReq.ObjectMeta.Name,
-			Namespace: metaCertReq.ObjectMeta.Namespace,
-		}
-		s := &corev1.Secret{}
-		return c.Get(ctx, name, s)
-	}).Should(Succeed())
 
 	// flesh out a metadata object
 	metadataResource := &verifyv1beta1.Metadata{
@@ -238,7 +211,7 @@ func TestReconcile(t *testing.T) {
 
 	byteValidUntil, _ := getSecretData("validUntil")()
 
-	g.Eventually(checkDateIsInRange(byteValidUntil)).Should(Equal(true))
+	g.Eventually(checkDateIsInRange(t, byteValidUntil)).Should(Equal(true))
 	// TODO: add the rest of the Secret fields here...
 
 	// We expect a an nginx Deployment to be created with the same name
@@ -299,7 +272,7 @@ func TestReconcile(t *testing.T) {
 	// * 4x earlier (see above)
 	// * 2x after update (signingCert and samlCert)
 	// * 0x after second update?
-	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(5))
+	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(6))
 
 	// We do not expecyt the Reconcile func to have been called more than 3 times (create, update, update)
 	g.Consistently(reconcileMetadataCallCount, timeout).Should(Equal(3))
@@ -354,7 +327,8 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 		mgrStopped.Wait()
 	}()
 
-	generateCertChain(t, ctx, c, g)
+	teardownCerts := generateCertChain(t, ctx, c, g)
+	defer teardownCerts(t)
 
 	// flesh out a metadata object
 	metadataResource := &verifyv1beta1.Metadata{
@@ -442,123 +416,6 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 	g.Eventually(getSecretData("hsmCustomerCA.crt")).Should(BeNil())
 }
 
-func checkDateIsInRange(byteStrInputDate []byte) bool {
-	timeObjInputDate, _ := time.Parse(time.RFC1123Z, string(byteStrInputDate))
-
-	currentTime := time.Now().AddDate(0, 0, 30)
-
-	beforeTime := currentTime.Add(-30 * time.Second)
-	afterTime := currentTime.Add(30 * time.Second)
-
-	return timeObjInputDate.After(beforeTime) && timeObjInputDate.Before(afterTime)
-}
-
-func generateCertChain(t *testing.T, ctx context.Context, c client.Client, g *GomegaWithT) (*verifyv1beta1.CertificateRequest, *verifyv1beta1.CertificateRequest, *verifyv1beta1.CertificateRequest, func(t *testing.T)) {
-
-	// create fake root certificate request
-	rootCertReq := &verifyv1beta1.CertificateRequest{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "root",
-			Namespace: "cert-system",
-		},
-		Spec: verifyv1beta1.CertificateRequestSpec{
-			CountryCode:      "GB",
-			CommonName:       "RootCA",
-			ExpiryMonths:     12,
-			Location:         "London",
-			Organization:     "Cab",
-			OrganizationUnit: "GDS",
-			CACert:           true,
-		},
-	}
-
-	err := c.Create(ctx, rootCertReq)
-	g.Expect(err).ToNot(HaveOccurred())
-
-	// create fake intermediate certificate request
-	intCertReq := &verifyv1beta1.CertificateRequest{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "int",
-			Namespace: "cert-system",
-		},
-		Spec: verifyv1beta1.CertificateRequestSpec{
-			CountryCode:      "GB",
-			CommonName:       "IntermediateCA",
-			ExpiryMonths:     12,
-			Location:         "London",
-			Organization:     "Cab",
-			OrganizationUnit: "GDS",
-			CACert:           true,
-			CertificateAuthority: &verifyv1beta1.CertificateAuthoritySpec{
-				SecretName: "root",
-				Namespace:  "cert-system",
-			},
-		},
-	}
-	err = c.Create(ctx, intCertReq)
-	g.Expect(err).ToNot(HaveOccurred())
-
-	// create fake metadata certificate request
-	metaCertReq := &verifyv1beta1.CertificateRequest{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "meta",
-			Namespace: "default",
-		},
-		Spec: verifyv1beta1.CertificateRequestSpec{
-			CountryCode:      "GB",
-			CommonName:       "MetadataSigngingCert",
-			ExpiryMonths:     12,
-			Location:         "London",
-			Organization:     "Cab",
-			OrganizationUnit: "GDS",
-			CACert:           false,
-			CertificateAuthority: &verifyv1beta1.CertificateAuthoritySpec{
-				SecretName: "int",
-				Namespace:  "cert-system",
-			},
-		},
-	}
-	err = c.Create(ctx, metaCertReq)
-	g.Expect(err).ToNot(HaveOccurred())
-
-	tearDown := func(t *testing.T) {
-		rootName := types.NamespacedName{
-			Name:      rootCertReq.ObjectMeta.Name,
-			Namespace: rootCertReq.ObjectMeta.Namespace,
-		}
-		rootRequest := &verifyv1beta1.CertificateRequest{}
-		_ = c.Get(ctx, rootName, rootRequest)
-		_ = c.Delete(ctx, rootRequest)
-		rootSecret := &corev1.Secret{}
-		_ = c.Get(ctx, rootName, rootSecret)
-		_ = c.Delete(ctx, rootSecret)
-
-		intName := types.NamespacedName{
-			Name:      intCertReq.ObjectMeta.Name,
-			Namespace: intCertReq.ObjectMeta.Namespace,
-		}
-		intRequest := &verifyv1beta1.CertificateRequest{}
-		_ = c.Get(ctx, intName, intRequest)
-		_ = c.Delete(ctx, intRequest)
-		intSecret := &corev1.Secret{}
-		_ = c.Get(ctx, intName, intSecret)
-		_ = c.Delete(ctx, intSecret)
-
-		metaName := types.NamespacedName{
-			Name:      metaCertReq.ObjectMeta.Name,
-			Namespace: metaCertReq.ObjectMeta.Namespace,
-		}
-		metaRequest := &verifyv1beta1.CertificateRequest{}
-		_ = c.Get(ctx, metaName, metaRequest)
-		_ = c.Delete(ctx, metaRequest)
-		metadataSecret := &corev1.Secret{}
-		_ = c.Get(ctx, metaName, metadataSecret)
-		_ = c.Delete(ctx, metadataSecret)
-	}
-
-	return rootCertReq, intCertReq, metaCertReq, tearDown
-}
-
 func TestShouldRegenerate(t *testing.T) {
 	g := NewGomegaWithT(t)
 
@@ -611,4 +468,128 @@ func TestShouldRegenerate(t *testing.T) {
 
 	mockSecrets.Data[validUntil] = []byte(time.Now().Add(time.Duration(time.Hour*12 + time.Minute)).Format(time.RFC1123Z))
 	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeFalse())
+}
+
+func checkDateIsInRange(t *testing.T, byteStrInputDate []byte) bool {
+	t.Helper()
+	timeObjInputDate, _ := time.Parse(time.RFC1123Z, string(byteStrInputDate))
+
+	currentTime := time.Now().AddDate(0, 0, 30)
+
+	beforeTime := currentTime.Add(-30 * time.Second)
+	afterTime := currentTime.Add(30 * time.Second)
+
+	return timeObjInputDate.After(beforeTime) && timeObjInputDate.Before(afterTime)
+}
+
+type certDetails struct {
+	name               string
+	namespace          string
+	commonName         string
+	caCert             bool
+	authorityName      string
+	authorityNamespace string
+}
+
+func generateCertChain(t *testing.T, ctx context.Context, c client.Client, g *GomegaWithT) func(t *testing.T) {
+	t.Helper()
+	certs := []certDetails{
+		{
+			"root",
+			"cert-system",
+			"RootCA",
+			true,
+			"",
+			"",
+		},
+		{
+			"int",
+			"cert-system",
+			"IntermediateCA",
+			true,
+			"root",
+			"cert-system",
+		},
+		{
+			"meta",
+			"default",
+			"MetadataSigningCert",
+			false,
+			"int",
+			"cert-system",
+		},
+	}
+
+	rootCertReq := &verifyv1beta1.CertificateRequest{}
+	rootSecret := &corev1.Secret{}
+	createCert(t, certs[0], rootCertReq, rootSecret, ctx, c, g)
+
+	intCertReq := &verifyv1beta1.CertificateRequest{}
+	intSecret := &corev1.Secret{}
+	createCert(t, certs[1], intCertReq, intSecret, ctx, c, g)
+
+	metaCertReq := &verifyv1beta1.CertificateRequest{}
+	metaSecret := &corev1.Secret{}
+	createCert(t, certs[2], metaCertReq, metaSecret, ctx, c, g)
+
+	tearDown := func(t *testing.T) {
+		g.Eventually(func() error {
+			return c.Delete(ctx, rootCertReq)
+		}).Should(Succeed())
+		g.Eventually(func() error {
+			return c.Delete(ctx, rootSecret)
+		}).Should(Succeed())
+
+		g.Eventually(func() error {
+			return c.Delete(ctx, intCertReq)
+		}).Should(Succeed())
+		g.Eventually(func() error {
+			return c.Delete(ctx, intSecret)
+		}).Should(Succeed())
+
+		g.Eventually(func() error {
+			return c.Delete(ctx, metaCertReq)
+		}).Should(Succeed())
+		g.Eventually(func() error {
+			return c.Delete(ctx, metaSecret)
+		}).Should(Succeed())
+	}
+
+	return tearDown
+}
+
+func createCert(t *testing.T, details certDetails, req *verifyv1beta1.CertificateRequest, secret *corev1.Secret, ctx context.Context, c client.Client, g *GomegaWithT) {
+	t.Helper()
+	req.ObjectMeta = metav1.ObjectMeta{
+		Name:      details.name,
+		Namespace: details.namespace,
+	}
+
+	req.Spec = verifyv1beta1.CertificateRequestSpec{
+		CountryCode:      "GB",
+		CommonName:       details.commonName,
+		ExpiryMonths:     12,
+		Location:         "London",
+		Organization:     "Cab",
+		OrganizationUnit: "GDS",
+		CACert:           details.caCert,
+	}
+
+	if details.authorityName != "" {
+		req.Spec.CertificateAuthority = &verifyv1beta1.CertificateAuthoritySpec{
+			SecretName: details.authorityName,
+			Namespace:  details.authorityNamespace,
+		}
+	}
+	namespacedName := types.NamespacedName{
+		Name:      req.ObjectMeta.Name,
+		Namespace: req.ObjectMeta.Namespace,
+	}
+
+	err := c.Create(ctx, req)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	g.Eventually(func() error {
+		return c.Get(ctx, namespacedName, secret)
+	}).Should(Succeed())
 }
