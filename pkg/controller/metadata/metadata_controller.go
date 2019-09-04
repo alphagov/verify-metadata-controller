@@ -59,7 +59,7 @@ const (
 	endTag                      = "\n-----END CERTIFICATE-----"
 	requeueAfterNS              = 1800000000000
 	samlSigningCertSuffix       = "-saml-signing-cert"
-	samlSigningCertLife         = time.Hour * 24 * time.Duration(90)
+	samlSigningCertLife         = time.Hour * 24 * time.Duration(272)
 	samlSigningCertKey          = "signingCertificate"
 	samlSigningCertNotBeforeKey = "notBefore"
 )
