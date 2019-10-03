@@ -70,7 +70,6 @@ public class MetadataGenerator implements Callable<Void> {
     enum NodeType {connector, proxy}
 
     enum SigningAlgoType {
-        rsa(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA256),
         rsapss(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA256_MGF1),
         ecdsa(XMLSignature.ALGO_ID_SIGNATURE_ECDSA_SHA256);
 
@@ -97,7 +96,7 @@ public class MetadataGenerator implements Callable<Void> {
     private File outputFile;
 
     @CommandLine.Option(names = "--algorithm", description = "Signing algorithm")
-    private SigningAlgoType signingAlgo = SigningAlgoType.rsa;
+    private SigningAlgoType signingAlgo = SigningAlgoType.rsapss;
 
     @CommandLine.Option(names = "--hsm-saml-signing-key-label", description = "HSM Signing key label (required for self-signed SAML Signing cert from HSM)")
     private String hsmSamlSigningKeyLabel;

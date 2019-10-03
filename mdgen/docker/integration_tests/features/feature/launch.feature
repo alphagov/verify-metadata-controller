@@ -27,4 +27,4 @@ Feature: The java app
     And the file contains the supplied saml encryption certificate: "<encryption_cert>"
     Examples:
       | node_type | algorithm | signing_cert                        | encryption_cert                        |
-      | connector | RSA       | test-supplied-saml-signing-cert.pem | test-supplied-saml-encryption-cert.pem |
+      | connector | RSAPSS    | test-supplied-saml-signing-cert.pem | test-supplied-saml-encryption-cert.pem |
