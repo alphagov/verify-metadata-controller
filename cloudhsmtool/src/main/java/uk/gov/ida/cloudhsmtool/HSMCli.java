@@ -19,7 +19,7 @@ public  class HSMCli {
     public static final BigInteger RSA_PUBLIC_EXPONENT = BigInteger.valueOf(65537);
     public static final String SIGNING_ALGO_SHA256_RSA = "SHA256withRSA";
     public static final String LABEL_PUBLIC_SUFFIX = ":public";
-    public static final int DEFAULT_KEY_SIZE = 2048;
+    public static final int DEFAULT_KEY_SIZE = 3072;
     public static final String PROVIDER_NAME_CAVIUM = "Cavium";
 
     @CommandLine.Parameters(arity = "1", description = "keystore alias")
