@@ -12,7 +12,6 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
-import java.security.PublicKey;
 import java.util.concurrent.Callable;
 
 @CommandLine.Command(

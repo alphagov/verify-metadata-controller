@@ -12,12 +12,11 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
 
 public  class HSMCli {
 
     public static final BigInteger RSA_PUBLIC_EXPONENT = BigInteger.valueOf(65537);
-    public static final String SIGNING_ALGO_SHA256_RSA = "SHA256withRSA";
+    public static final String ALGO_ID_SIGNATURE_RSA_SHA256_MGF1 = "SHA256WITHRSAANDMGF1";
     public static final String LABEL_PUBLIC_SUFFIX = ":public";
     public static final int DEFAULT_KEY_SIZE = 3072;
     public static final String PROVIDER_NAME_CAVIUM = "Cavium";
