@@ -31,13 +31,11 @@ import (
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
 	"github.com/alphagov/verify-metadata-controller/pkg/hsm"
 	"github.com/mitchellh/hashstructure"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -498,151 +496,6 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		logInfo("Metadata up-to-date, not regenerating at this time", instance.ObjectMeta)
 	}
 
-	metadataLabels := map[string]string{
-		"deployment": instance.Name,
-	}
-
-	metadataDeployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
-			Annotations: map[string]string{
-				versionAnnotation: currentVersion,
-			},
-		},
-		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: metadataLabels,
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: metadataLabels,
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "nginx",
-							Image: "nginx",
-							Ports: []corev1.ContainerPort{
-								{
-									Name:          "http",
-									ContainerPort: 80,
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "data",
-									MountPath: "/usr/share/nginx/html",
-									ReadOnly:  true,
-								},
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "data",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: instance.Name,
-									Items: []corev1.KeyToPath{
-										{
-											Key:  metadataXMLKey,
-											Path: getPublishingPath(instance),
-										},
-										{
-											Key:  metadataCACertsKey,
-											Path: getMetadataCACertsPublishingPath(instance),
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-	if err := controllerutil.SetControllerReference(instance, metadataDeployment, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
-	// Find or create metadataDeployment
-	foundDeployment := &appsv1.Deployment{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: metadataDeployment.Name, Namespace: metadataDeployment.Namespace}, foundDeployment)
-	if err != nil && errors.IsNotFound(err) {
-		logInfo("Creating metadata deployment", metadataDeployment.ObjectMeta, "version", currentVersion)
-		err = r.Create(context.TODO(), metadataDeployment)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to create Deployment %s: %s", metadataDeployment.Name, err)
-		}
-		logInfo("Created metadata deployment", metadataDeployment.ObjectMeta, "version", currentVersion)
-	} else if err != nil {
-		return reconcile.Result{}, err
-	} else if foundDeployment.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
-		logInfo("Updating metadata deployment", metadataDeployment.ObjectMeta, "version", foundDeployment.ObjectMeta.Annotations[versionAnnotation])
-		foundDeployment.Spec = metadataDeployment.Spec
-		foundDeployment.ObjectMeta.Annotations[versionAnnotation] = currentVersion
-		err = r.Update(context.TODO(), foundDeployment)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to update Deployment %s: %s", foundDeployment.Name, err)
-		}
-		logInfo("Updated metadata deployment", metadataDeployment.ObjectMeta, "version", currentVersion)
-	}
-
-	metadataService := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
-			Annotations: map[string]string{
-				versionAnnotation: currentVersion,
-			},
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: metadataLabels,
-			Ports: []corev1.ServicePort{
-				{
-					Protocol:   "TCP",
-					Port:       80,
-					Name:       "http",
-					TargetPort: intstr.FromInt(80),
-				},
-			},
-		},
-	}
-	if err := controllerutil.SetControllerReference(instance, metadataService, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
-
-	// Find or create metadataService
-	foundService := &corev1.Service{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: metadataService.Name, Namespace: metadataService.Namespace}, foundService)
-	if err != nil && errors.IsNotFound(err) {
-		logInfo("Creating metadata service", metadataService.ObjectMeta, "version", currentVersion)
-		err = r.Create(context.TODO(), metadataService)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to create Service %s: %s", metadataService.Name, err)
-		}
-		logInfo("Created metadata service", metadataService.ObjectMeta, "version", currentVersion)
-	} else if err != nil {
-		return reconcile.Result{}, err
-	} else if foundService.ObjectMeta.Annotations[versionAnnotation] != currentVersion {
-		logInfo("Updating metadata service", metadataService.ObjectMeta, "version", foundService.ObjectMeta.Annotations[versionAnnotation])
-		foundService.ObjectMeta.Annotations[versionAnnotation] = currentVersion
-		foundService.Spec.Selector = metadataLabels
-		foundService.Spec.Ports = []corev1.ServicePort{
-			{
-				Protocol:   "TCP",
-				Port:       80,
-				Name:       "http",
-				TargetPort: intstr.FromInt(80),
-			},
-		}
-		err = r.Update(context.TODO(), foundService)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to update Service %s: %s", foundService.Name, err)
-		}
-		logInfo("Updated metadata service", metadataService.ObjectMeta, "version", currentVersion)
-	}
-
 	logInfo(fmt.Sprintf("Instance reconciliation complete - requeuing in %d seconds (%d minutes)",
 		requeueAfterNS/1000000000, requeueAfterNS/1000000000/60), instance.ObjectMeta)
 	return reconcile.Result{RequeueAfter: requeueAfterNS}, nil
@@ -693,13 +546,6 @@ func getPublishingPath(instance *verifyv1beta1.Metadata) string {
 	}
 }
 
-func getMetadataCACertsPublishingPath(instance *verifyv1beta1.Metadata) string {
-	if instance.Spec.PublishingPath != "" {
-		return instance.Spec.PublishingPath + "SigningCertificates"
-	} else {
-		return metadataCACertsKey
-	}
-}
 
 func formatCertString(certString string) []byte {
 	return []byte(beginTag + certString + endTag)
