@@ -23,7 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	verifyv1beta1 "github.com/alphagov/verify-metadata-controller/pkg/apis/verify/v1beta1"
@@ -31,14 +30,16 @@ import (
 	"github.com/alphagov/verify-metadata-controller/pkg/hsm/hsmfakes"
 	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-const timeout = time.Second * 5
+const (
+	timeout      = time.Second * 5
+	constantHash = "deadbeef"
+)
 
 func TestReconcile(t *testing.T) {
 	ctx := context.Background()
@@ -181,9 +182,6 @@ func TestReconcile(t *testing.T) {
 		Name:      metadataResource.ObjectMeta.Name,
 		Namespace: metadataResource.ObjectMeta.Namespace,
 	}
-	expectedLabels := map[string]string{
-		"deployment": metadataResource.ObjectMeta.Name,
-	}
 
 	// The Reconcile function should have been called exactly once so far
 	g.Eventually(reconcileMetadataCallCount, timeout).Should(Equal(1))
@@ -238,34 +236,8 @@ func TestReconcile(t *testing.T) {
 
 	byteValidUntil, _ := getSecretData("validUntil")()
 
-	g.Eventually(checkDateIsInRange(byteValidUntil)).Should(Equal(true))
+	g.Eventually(checkDateIsInRange(t, byteValidUntil)).Should(Equal(true))
 	// TODO: add the rest of the Secret fields here...
-
-	// We expect a an nginx Deployment to be created with the same name
-	deploymentResource := &appsv1.Deployment{}
-	getDeploymentResource := func() error {
-		return c.Get(ctx, expectedName, deploymentResource)
-	}
-	g.Eventually(getDeploymentResource).Should(Succeed())
-	g.Expect(deploymentResource.Spec.Selector.MatchLabels).To(Equal(expectedLabels))
-	g.Expect(deploymentResource.Spec.Template.Spec.Containers).To(HaveLen(1))
-	g.Expect(deploymentResource.Spec.Template.Spec.Containers[0].Image).To(Equal("nginx"))
-	g.Expect(deploymentResource.Spec.Template.ObjectMeta.Labels).To(Equal(expectedLabels))
-
-	// We expect a Service to be created in same namespace
-	serviceResource := &corev1.Service{}
-	getServiceResource := func() error {
-		return c.Get(ctx, expectedName, serviceResource)
-	}
-	g.Eventually(getServiceResource).Should(Succeed())
-	g.Expect(serviceResource.Spec.Ports).To(HaveLen(1))
-	g.Expect(serviceResource.Spec.Ports[0].Name).To(Equal("http"))
-	g.Expect(serviceResource.Spec.Ports[0].Protocol).To(Equal(corev1.Protocol("TCP")))
-	g.Expect(serviceResource.Spec.Ports[0].Port).To(Equal(int32(80)))
-	g.Expect(serviceResource.Spec.Ports[0].TargetPort).To(Equal(intstr.FromInt(80)))
-	g.Expect(serviceResource.Spec.Selector).To(Equal(expectedLabels))
-	g.Expect(serviceResource.Spec.ClusterIP).NotTo(Equal(corev1.ClusterIPNone))
-	g.Expect(serviceResource.Spec.ClusterIP).NotTo(Equal(""))
 
 	// Update the metadata
 	metadataResourceUpdated := metadataResource
@@ -277,15 +249,7 @@ func TestReconcile(t *testing.T) {
 
 	// We expect the Secret data field(s) to get updated
 	g.Eventually(getSecretData("postURL")).Should(Equal([]byte("https://new-post-url/")))
-
-	// and a new serviceResource should exist
-	prevClusterIP := serviceResource.Spec.ClusterIP
-	serviceResource = &corev1.Service{}
-	g.Eventually(getServiceResource).Should(Succeed())
-
-	// We expect the Service ClusterIP to be unchanged
-	g.Expect(serviceResource.Spec.ClusterIP).To(Equal(prevClusterIP))
-
+	
 	// Update the metadata a third time, but with no changes that affect generated metadata
 	metadataResourceUpdated.ObjectMeta.Annotations = map[string]string{
 		"inconsequental-annotation": "nothing-to-see-here",
@@ -301,7 +265,7 @@ func TestReconcile(t *testing.T) {
 	// * 0x after second update?
 	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(5))
 
-	// We do not expecyt the Reconcile func to have been called more than 3 times (create, update, update)
+	// We do not expect the Reconcile func to have been called more than 3 times (create, update, update)
 	g.Consistently(reconcileMetadataCallCount, timeout).Should(Equal(3))
 }
 
@@ -442,7 +406,8 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 	g.Eventually(getSecretData("hsmCustomerCA.crt")).Should(BeNil())
 }
 
-func checkDateIsInRange(byteStrInputDate []byte) bool {
+func checkDateIsInRange(t *testing.T, byteStrInputDate []byte) bool {
+	t.Helper()
 	timeObjInputDate, _ := time.Parse(time.RFC1123Z, string(byteStrInputDate))
 
 	currentTime := time.Now().AddDate(0, 0, 30)
@@ -562,53 +527,97 @@ func generateCertChain(t *testing.T, ctx context.Context, c client.Client, g *Go
 func TestShouldRegenerate(t *testing.T) {
 	g := NewGomegaWithT(t)
 
-	const ConstantHash = "Im a constant hash"
+	loc, _ := time.LoadLocation("UTC")
+	now := time.Now().In(loc)
 
-	mockMetadata := verifyv1beta1.Metadata{}
+	t.Run("Hashes should differ, so should be true to regenerate", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret(now)
+
+		mockSecrets.ObjectMeta.Annotations[versionAnnotation] = ""
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata)).To(BeTrue())
+	})
+
+	t.Run("Hash should now match, but there is no data for the expiration, this simulates a upgrade.", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret(now)
+
+		mockSecrets.Data[validityDays] = nil
+		mockSecrets.Data[validUntil] = nil
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata)).To(BeTrue())
+	})
+
+	t.Run("There should be a parse error.", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret(now)
+
+		mockSecrets.Data[validUntil] = []byte("")
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata)).To(BeTrue())
+	})
+
+	t.Run("Should regenerate as validUntil is in the past.", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret(now)
+
+		mockSecrets.Data[validUntil] = []byte(now.AddDate(0, 0, -1).Format(time.RFC1123Z))
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata)).To(BeTrue())
+	})
+
+	t.Run("Should regenerate if half of the metadata validity days remain.", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret(now)
+
+		mockSecrets.Data[validUntil] = []byte(now.AddDate(0, 0, 15).Format(time.RFC1123Z))
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata)).To(BeTrue())
+	})
+
+	t.Run("Shouldn't regenerate if more than half of the metadata validity days remain.", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret(now)
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata)).To(BeFalse())
+	})
+
+	t.Run("Should work with odd values of validityDays", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret(now)
+
+		mockSecrets.Data[validityDays] = []byte("1")
+		mockSecrets.Data[validUntil] = []byte(now.Format(time.RFC1123Z))
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata)).To(BeTrue())
+	})
+
+	t.Run("Should regenerate for validity of one day when less than 12 hours validity remaining", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret(now)
+
+		mockSecrets.Data[validityDays] = []byte("1")
+		mockSecrets.Data[validUntil] = []byte(now.Add(time.Duration(time.Hour * 12)).Format(time.RFC1123Z))
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata)).To(BeTrue())
+	})
+
+	t.Run("Should not regenerate for validity of one day when more than 12 hours validity remaining", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret(now)
+
+		mockSecrets.Data[validityDays] = []byte("1")
+		mockSecrets.Data[validUntil] = []byte(now.Add(time.Duration(time.Hour*12 + time.Minute)).Format(time.RFC1123Z))
+
+		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata)).To(BeFalse())
+	})
+}
+
+func returnNonRegeneratingMetadataAndSecret(now time.Time) (mockMetadata verifyv1beta1.Metadata, mockSecrets corev1.Secret) {
+	mockMetadata = verifyv1beta1.Metadata{}
 	mockMetadata.Namespace = "Namespace"
 	mockMetadata.Name = "Name"
 
-	mockSecrets := corev1.Secret{}
-	mockSecrets.ObjectMeta.Annotations = make(map[string]string)
-	mockSecrets.Data = make(map[string][]byte)
+	mockSecrets = corev1.Secret{}
+	mockSecrets.ObjectMeta.Annotations = map[string]string{
+		versionAnnotation: constantHash,
+	}
+	mockSecrets.Data = map[string][]byte{
+		validUntil:   []byte(now.AddDate(0, 0, 15).Add(time.Duration(time.Minute)).Format(time.RFC1123Z)),
+		validityDays: []byte("30"),
+	}
 
-	// Hashes should differ, so should be true to regenerate
-	mockSecrets.ObjectMeta.Annotations[versionAnnotation] = ""
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	// Hash should now match, but there is no data for the expiration, this simulates a upgrade.
-	mockSecrets.ObjectMeta.Annotations[versionAnnotation] = ConstantHash
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	// There should be a parse error.
-	mockSecrets.Data[validityDays] = []byte("30")
-	mockSecrets.Data[validUntil] = []byte("")
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	// Should regenerate as time is in the past.
-	mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, -1).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	// Should regenerate if half of the validity days.
-	mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, 15).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	// Shouldn't regenerate if more than half of the validity days.
-	mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, 15).Add(time.Duration(time.Minute)).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeFalse())
-
-	// Shouldn't regenerate as in the future.
-	mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, 60).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeFalse())
-
-	// Should work with odd values of validityDays
-	mockSecrets.Data[validityDays] = []byte("1")
-	mockSecrets.Data[validUntil] = []byte(time.Now().Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	mockSecrets.Data[validUntil] = []byte(time.Now().Add(time.Duration(time.Hour * 12)).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeTrue())
-
-	mockSecrets.Data[validUntil] = []byte(time.Now().Add(time.Duration(time.Hour*12 + time.Minute)).Format(time.RFC1123Z))
-	g.Eventually(ShouldRegenerate(&mockSecrets, ConstantHash, mockMetadata)).Should(BeFalse())
+	return
 }

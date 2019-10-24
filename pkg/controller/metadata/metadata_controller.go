@@ -359,7 +359,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 }
 
 // This function determines if we should regenerate the metadata or not.
-func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, instance verifyv1beta1.Metadata) bool {
+func shouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, instance verifyv1beta1.Metadata) bool {
 	logInfo("Checking if metadata secret should be regenerated", instance.ObjectMeta)
 	secretsMap := secretsObj.Data
 
@@ -388,7 +388,9 @@ func ShouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, insta
 	}
 
 	// We want to regenerate the metadata if it's at least halfway through its lifetime.
-	regeneratePastThisDate := time.Now().Add(time.Hour * time.Duration(12*intValidityDays))
+	loc, _ := time.LoadLocation("UTC")
+	now := time.Now().In(loc)
+	regeneratePastThisDate := now.Add(time.Hour * time.Duration(12*intValidityDays))
 
 	// If the timestamp is less than half the metadata's lifetime away then regenerate it.
 	regenerate := validUntilTimeStamp.Before(regeneratePastThisDate)
@@ -479,7 +481,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		logInfo("Created metadata secret", metadataSecret.ObjectMeta, "version", currentVersion)
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else if ShouldRegenerate(foundSecret, currentVersion, *instance) {
+	} else if shouldRegenerate(foundSecret, currentVersion, *instance) {
 		logInfo("Updating metadata secret", foundSecret.ObjectMeta, "version", foundSecret.ObjectMeta.Annotations[versionAnnotation])
 		updatedData, err := r.generateMetadataSecretData(instance, metadataSigningSecret, &instance.Spec.CertificateAuthority)
 		if err != nil {
@@ -545,7 +547,6 @@ func getPublishingPath(instance *verifyv1beta1.Metadata) string {
 		return metadataXMLKey
 	}
 }
-
 
 func formatCertString(certString string) []byte {
 	return []byte(beginTag + certString + endTag)
