@@ -21,6 +21,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,20 +49,22 @@ import (
 )
 
 const (
-	cloudHSMKeyType             = "cloudhsm"
-	metadataXMLKey              = "metadata.xml"
-	metadataCACertsKey          = "metadataCACerts"
-	truststorePassword          = "mashmallow"
-	versionAnnotation           = "metadata-version"
-	validityDays                = "validityDays"
-	validUntil                  = "validUntil"
-	beginTag                    = "-----BEGIN CERTIFICATE-----\n"
-	endTag                      = "\n-----END CERTIFICATE-----"
-	requeueAfterNS              = 1800000000000
-	samlSigningCertSuffix       = "-saml-signing-cert"
-	samlSigningCertLife         = time.Hour * 24 * time.Duration(272)
-	samlSigningCertKey          = "signingCertificate"
-	samlSigningCertNotBeforeKey = "notBefore"
+	cloudHSMKeyType                          = "cloudhsm"
+	metadataXMLKey                           = "metadata.xml"
+	metadataCACertsKey                       = "metadataCACerts"
+	truststorePassword                       = "mashmallow"
+	versionAnnotation                        = "metadata-version"
+	validityDays                             = "validityDays"
+	validUntil                               = "validUntil"
+	beginTag                                 = "-----BEGIN CERTIFICATE-----\n"
+	endTag                                   = "\n-----END CERTIFICATE-----"
+	requeueAfterNS                           = 1800000000000
+	samlSigningCertSuffix                    = "-saml-signing-cert"
+	samlSigningCertKey                       = "samlSigningCert"
+	samlSigningCertNotAfterKey               = "notAfter"
+	samlSigningCertRequestHashKey            = "requestHashKey"
+	samlSigningCertSerialKey                 = "serial"
+	samlSigningCertRegenerateWhenDaysLeftKey = "regenerateWhenDaysLeft"
 )
 
 var log = logf.Log.WithName("controller")
@@ -186,6 +189,19 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{}, fmt.Errorf("certificateAuthority Secret '%s' in namespace '%s': %s", instance.Spec.CertificateAuthority.SecretName, instance.Spec.CertificateAuthority.Namespace, err)
 	}
 
+	// We need to get the current signing cert config map (if generating the signing cert) so we can see if it causes the metadata to need regenerating
+	currentSigningCertConfigMap := &corev1.ConfigMap{}
+	if instance.Spec.SAMLSigningCertificate != nil {
+		err := r.Get(context.TODO(), types.NamespacedName{
+			Name:      instance.Name + samlSigningCertSuffix,
+			Namespace: instance.Namespace,
+		}, currentSigningCertConfigMap)
+		// We don't mind if it's not found, but we do if there was an error fetching it.
+		if err != nil && !errors.IsNotFound(err) {
+			return reconcile.Result{}, fmt.Errorf("currentSigningCertConfigMap in namespace '%s': %s", instance.Spec.CertificateAuthority.Namespace, err)
+		}
+	}
+	
 	// Find or create metadataSecret
 	foundSecret := &corev1.Secret{}
 	err = r.Get(context.TODO(), types.NamespacedName{
@@ -220,7 +236,7 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 		logInfo("Created metadata secret", metadataSecret.ObjectMeta, "version", currentVersion)
 	} else if err != nil {
 		return reconcile.Result{}, err
-	} else if shouldRegenerate(foundSecret, currentVersion, *instance, samlSigningCertLife) {
+	} else if shouldRegenerateMetadata(foundSecret, currentVersion, *instance, *currentSigningCertConfigMap) {
 		logInfo("Updating metadata secret", foundSecret.ObjectMeta, "version", foundSecret.ObjectMeta.Annotations[versionAnnotation])
 		updatedData, err := r.generateMetadataSecretData(instance, metadataSigningSecret, &instance.Spec.CertificateAuthority)
 		if err != nil {
@@ -580,7 +596,7 @@ func (r *ReconcileMetadata) generateMetadataSecretData(instance *verifyv1beta1.M
 		"metadataCATruststoreBase64":        []byte(base64.StdEncoding.EncodeToString(metadataCATruststore)),
 		"metadataCATruststorePassword":      []byte(metadataCATruststorePassword),
 		"publishingPath":                    []byte(getPublishingPath(instance)),
-		"samlSigningCert":                   []byte(samlSigningCert),
+		samlSigningCertKey:                  []byte(samlSigningCert),
 		"samlSigningCertBase64":             []byte(base64.StdEncoding.EncodeToString(samlSigningCert)),
 		"samlSigningTruststore":             []byte(samlSigningTruststore),
 		"samlSigningTruststoreBase64":       []byte(base64.StdEncoding.EncodeToString(samlSigningTruststore)),
@@ -616,7 +632,7 @@ func (r *ReconcileMetadata) findOrCreateSamlSigningCert(instance *verifyv1beta1.
 	if err != nil && errors.IsNotFound(err) {
 		logInfo("creating configMap for saml-signing-cert", instance.ObjectMeta, "configMap", configMapName)
 
-		binaryData, err := r.generateSamlSigningCertData(instance, samlSigningKeyLabel, samlSigningCreds)
+		binaryData, data, err := r.generateSamlSigningCertConfigMapData(instance, samlSigningKeyLabel, samlSigningCreds)
 		if err != nil {
 			return nil, fmt.Errorf("error generating saml-signing cert data: %s", err)
 		}
@@ -627,6 +643,7 @@ func (r *ReconcileMetadata) findOrCreateSamlSigningCert(instance *verifyv1beta1.
 				Namespace: instance.Namespace,
 			},
 			BinaryData: binaryData,
+			Data:       data,
 		}
 
 		err = r.Create(context.TODO(), samlSigningCertConfigMap)
@@ -638,21 +655,30 @@ func (r *ReconcileMetadata) findOrCreateSamlSigningCert(instance *verifyv1beta1.
 
 	} else if err != nil {
 		return nil, err
-	} else if olderThan(samlSigningCertLife, string(currentSigningCertConfigMap.BinaryData[samlSigningCertNotBeforeKey])) {
-		logInfo("saml-signing-cert too old, updating configMap for saml-signing-cert",
+	} else if shouldRegenerateSamlSigningCertConfigMap(currentSigningCertConfigMap, instance) {
+		logInfo("updating configMap for saml-signing-cert",
 			instance.ObjectMeta,
-			"notBefore", string(currentSigningCertConfigMap.BinaryData[samlSigningCertNotBeforeKey]),
-			"samlSigningCertLife", samlSigningCertLife,
 			"configMap", configMapName,
-			"configMapData", currentSigningCertConfigMap.BinaryData,
+			"configMapData", currentSigningCertConfigMap.Data,
+			"configMapBinaryData", currentSigningCertConfigMap.BinaryData,
 		)
 
-		binaryData, err := r.generateSamlSigningCertData(instance, samlSigningKeyLabel, samlSigningCreds)
-		if err != nil {
-			return nil, fmt.Errorf("error generating saml-signing cert data: %s", err)
+		var binaryData = make(map[string][]byte)
+		var data = make(map[string]string)
+		// if hashes of all fields except regeneration days are the same, just update that field
+		if onlyRegenerateWhenDaysLeftChanged(instance, currentSigningCertConfigMap) {
+			binaryData = currentSigningCertConfigMap.BinaryData
+			data = currentSigningCertConfigMap.Data
+			data[samlSigningCertRegenerateWhenDaysLeftKey] = getStringRegenerateDaysFromInstance(instance)
+		} else {
+			binaryData, data, err = r.generateSamlSigningCertConfigMapData(instance, samlSigningKeyLabel, samlSigningCreds)
+			if err != nil {
+				return nil, fmt.Errorf("error generating saml-signing cert data: %s", err)
+			}
 		}
 
 		currentSigningCertConfigMap.BinaryData = binaryData
+		currentSigningCertConfigMap.Data = data
 
 		err = r.Update(context.TODO(), currentSigningCertConfigMap)
 		if err != nil {
@@ -661,6 +687,13 @@ func (r *ReconcileMetadata) findOrCreateSamlSigningCert(instance *verifyv1beta1.
 
 		samlSigningCert = binaryData[samlSigningCertKey]
 
+		logInfo("updated configMap for saml-signing-cert",
+			instance.ObjectMeta,
+			"configMap", configMapName,
+			"configMapData", currentSigningCertConfigMap.Data,
+			"configMapBinaryData", currentSigningCertConfigMap.BinaryData,
+		)
+
 	} else {
 		samlSigningCert = currentSigningCertConfigMap.BinaryData[samlSigningCertKey]
 	}
@@ -668,10 +701,10 @@ func (r *ReconcileMetadata) findOrCreateSamlSigningCert(instance *verifyv1beta1.
 	return samlSigningCert, nil
 }
 
-func (r *ReconcileMetadata) generateSamlSigningCertData(instance *verifyv1beta1.Metadata, samlSigningKeyLabel string, samlSigningCreds hsm.Credentials) (map[string][]byte, error) {
+func (r *ReconcileMetadata) generateSamlSigningCertConfigMapData(instance *verifyv1beta1.Metadata, samlSigningKeyLabel string, samlSigningCreds hsm.Credentials) (map[string][]byte, map[string]string, error) {
 	_, err := r.hsm.FindOrCreateRSAKeyPair(samlSigningKeyLabel, samlSigningCreds)
 	if err != nil {
-		return nil, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", samlSigningKeyLabel, err)
+		return nil, nil, fmt.Errorf("findOrCreateRSAKeyPair(%s): %s", samlSigningKeyLabel, err)
 	}
 	samlSigningCertReq := hsm.CertRequest{
 		CountryCode:      instance.Spec.SAMLSigningCertificate.CountryCode,
@@ -684,43 +717,104 @@ func (r *ReconcileMetadata) generateSamlSigningCertData(instance *verifyv1beta1.
 
 	samlSigningCert, err := r.hsm.CreateSelfSignedCert(samlSigningKeyLabel, samlSigningCreds, samlSigningCertReq)
 	if err != nil {
-		return nil, fmt.Errorf("CreateSelfSignedCert(%s): %s", samlSigningKeyLabel, err)
+		return nil, nil, fmt.Errorf("CreateSelfSignedCert(%s): %s", samlSigningKeyLabel, err)
 	}
 
-	samlSigningCertNotBefore, err := extractNotBeforeDate(samlSigningCert)
+	serial, err := extractSerial(samlSigningCert)
 	if err != nil {
-		return nil, fmt.Errorf("error extracting notBefore date from cert %q: %s", samlSigningCert, err)
+		return nil, nil, fmt.Errorf("error extracting serial: %s", err)
+	}
+
+	currentVersionInt, _ := hashstructure.Hash(instance.Spec.SAMLSigningCertificate, nil)
+
+	samlSigningCertNotAfter, err := extractNotAfterDate(samlSigningCert)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error extracting notBefore date from cert %q: %s", samlSigningCert, err)
 	}
 
 	binaryData := map[string][]byte{
-		samlSigningCertKey:          samlSigningCert,
-		samlSigningCertNotBeforeKey: []byte(samlSigningCertNotBefore),
+		samlSigningCertKey: samlSigningCert,
+	}
+	data := map[string]string{
+		samlSigningCertRequestHashKey:            fmt.Sprintf("%d", currentVersionInt),
+		samlSigningCertSerialKey:                 serial.String(),
+		samlSigningCertRegenerateWhenDaysLeftKey: getStringRegenerateDaysFromInstance(instance),
+		samlSigningCertNotAfterKey:               samlSigningCertNotAfter,
 	}
 
-	return binaryData, nil
+	return binaryData, data, nil
 }
 
-func extractNotBeforeDate(cert []byte) (string, error) {
+func extractX509(cert []byte) (*x509.Certificate, error) {
 	pemBlock, _ := pem.Decode(cert)
 	if pemBlock == nil {
-		return "", fmt.Errorf("no saml signing cert found in cert: %q", cert)
+		return nil, fmt.Errorf("no saml signing cert found in cert: %q", cert)
 	}
 	parsedCert, err := x509.ParseCertificate(pemBlock.Bytes)
 	if err != nil {
-		return "", fmt.Errorf("unable to parse saml signing cert: %s", err)
+		return nil, fmt.Errorf("unable to parse saml signing cert: %s", err)
 	}
-
-	return parsedCert.NotBefore.Format(time.RFC1123Z), nil
+	return parsedCert, nil
 }
 
-func olderThan(duration time.Duration, timeStamp string) bool {
-	notBefore, _ := time.Parse(time.RFC1123Z, timeStamp)
+func extractNotAfterDate(cert []byte) (string, error) {
+	x509, err := extractX509(cert)
+	if err != nil {
+		return "", err
+	}
+	return x509.NotAfter.Format(time.RFC1123Z), nil
+}
 
-	return notBefore.Add(duration).Before(time.Now())
+func extractSerial(cert []byte) (*big.Int, error) {
+	x509, err := extractX509(cert)
+	if err != nil {
+		return nil, err
+	}
+	return x509.SerialNumber, nil
+}
+
+func withinDays(currentSigningCertConfigMap *corev1.ConfigMap) bool {
+	days, _ := strconv.Atoi(currentSigningCertConfigMap.Data[samlSigningCertRegenerateWhenDaysLeftKey])
+	timeStampString := currentSigningCertConfigMap.Data[samlSigningCertNotAfterKey]
+	duration := time.Hour * time.Duration(days*24)
+	timeStamp, _ := time.Parse(time.RFC1123Z, timeStampString)
+	loc, _ := time.LoadLocation("UTC")
+	
+	return time.Now().In(loc).Add(duration).After(timeStamp)
+}
+
+func shouldRegenerateSamlSigningCertConfigMap(currentSigningCertConfigMap *corev1.ConfigMap, instance *verifyv1beta1.Metadata) bool {
+	// If the hash of the current certificate request spec is different to the incoming request spec then regenerate
+	currentVersionInt, _ := hashstructure.Hash(instance.Spec.SAMLSigningCertificate, nil)
+	if currentSigningCertConfigMap.Data[samlSigningCertRequestHashKey] != fmt.Sprintf("%d", currentVersionInt) {
+		logInfo("hash of new SAML cert request does not match current - regenerating SAML signing cert", instance.ObjectMeta)
+		return true
+	}
+
+	// If the `RegenerateWhenDaysLeft` field is different then regenerate
+	if currentSigningCertConfigMap.Data[samlSigningCertRegenerateWhenDaysLeftKey] != getStringRegenerateDaysFromInstance(instance) {
+		logInfo("RegenerateWhenDaysLeft of new SAML cert request does not match current - regenerating SAML signing cert", instance.ObjectMeta)
+		return true
+	}
+
+	// If we don't define `regenerateWhenDaysLeft` in the certificate definition, we don't automatically regenerate
+	if currentSigningCertConfigMap.Data[samlSigningCertRegenerateWhenDaysLeftKey] == "" {
+		logInfo("`regenerateWhenDaysLeft` not set - not regeneration SAML signing cert", instance.ObjectMeta)
+		return false
+	}
+
+	// If the time until the defined current certs `NotAfter` is less than the defined `regenerateWhenDaysLeft` then regenerate
+	if withinDays(currentSigningCertConfigMap) {
+		logInfo("current SAML signing cert within `regenerateWhenDaysLeft` of `NotAfter` date - regeneration SAML signing cert", instance.ObjectMeta)
+		return true
+	}
+
+	logInfo("not regenerating SAML signing cert", instance.ObjectMeta)
+	return false
 }
 
 // This function determines if we should regenerate the metadata or not.
-func shouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, instance verifyv1beta1.Metadata, certLife time.Duration) bool {
+func shouldRegenerateMetadata(secretsObj *corev1.Secret, hashOfRequestSpec string, instance verifyv1beta1.Metadata, currentSigningCertConfigMap corev1.ConfigMap) bool {
 	logInfo("Checking if metadata secret should be regenerated", instance.ObjectMeta)
 	secretsMap := secretsObj.Data
 
@@ -740,27 +834,6 @@ func shouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, insta
 		return true
 	}
 
-	// If we're generating self signed SAML signing certs with the HSM
-	if instance.Spec.SAMLSigningCertificate != nil {
-		samlSigningCertNotBefore, err := extractNotBeforeDate(secretsMap["samlSigningCert"])
-		if err != nil || samlSigningCertNotBefore == "" {
-			logInfo("Regenerating secret - unable to parse SAML signing cert",
-				instance.ObjectMeta,
-				"cert", secretsMap["samlSigningCert"],
-				"error", err,
-			)
-			return true
-		}
-
-		if olderThan(certLife, samlSigningCertNotBefore) {
-			logInfo(fmt.Sprintf("Regenerating secret - SAML signing cert older than %s", samlSigningCertLife),
-				instance.ObjectMeta,
-				"notBefore", samlSigningCertNotBefore,
-			)
-			return true
-		}
-	}
-
 	intValidityDays, errValidityDays := strconv.Atoi(string(byteValidityDays))
 	validUntilTimeStamp, errValidUntil := time.Parse(time.RFC1123Z, string(byteValidUntil))
 
@@ -773,9 +846,36 @@ func shouldRegenerate(secretsObj *corev1.Secret, hashOfRequestSpec string, insta
 	regeneratePastThisDate := time.Now().Add(time.Hour * time.Duration(12*intValidityDays))
 
 	// If the timestamp is less than half the metadata's lifetime away then regenerate it.
-	regenerate := validUntilTimeStamp.Before(regeneratePastThisDate)
-	logInfo(fmt.Sprintf("Regenerating secret %t - validUntilTimeStamp %q after regeneratePastThisDate %q", regenerate, validUntilTimeStamp, regeneratePastThisDate), instance.ObjectMeta)
-	return regenerate
+	if validUntilTimeStamp.Before(regeneratePastThisDate) {
+		logInfo(fmt.Sprintf("Regenerating secret - validUntilTimeStamp %q after regeneratePastThisDate %q", validUntilTimeStamp, regeneratePastThisDate), instance.ObjectMeta)
+		return true
+	}
+
+	// If we're generating self signed SAML signing certs with the HSM
+	if instance.Spec.SAMLSigningCertificate != nil {
+
+		// If the configMap was not found its fields will have "zero" values (nil for a map)
+		if currentSigningCertConfigMap.BinaryData == nil {
+			logInfo("Regenerating secret - SAML signing cert config map not found", instance.ObjectMeta)
+			return true
+		}
+		currentSerial, err := extractSerial(secretsMap[samlSigningCertKey])
+		if err != nil {
+			logInfo(fmt.Sprintf("unable to extract cert serial from current secret - regenerating: %s", err), instance.ObjectMeta)
+			return true
+		}
+		// If the cert in the metadata secret doesn't match the cert in the current configMap something weird has happened
+		if currentSerial.String() != currentSigningCertConfigMap.Data[samlSigningCertSerialKey] {
+			logInfo("current serial and configmap serial do not match - regenerating", instance.ObjectMeta)
+			return true
+		}
+		if shouldRegenerateSamlSigningCertConfigMap(&currentSigningCertConfigMap, &instance) {
+			logInfo("Regenerating secret - SAML signing cert needs regenerating", instance.ObjectMeta)
+			return true
+		}
+	}
+	logInfo("not regenerating metadata", instance.ObjectMeta)
+	return false
 }
 
 func generateTruststore(cert []byte, alias, storePass string, instance *verifyv1beta1.Metadata) ([]byte, error) {
@@ -833,6 +933,22 @@ func getMetadataCACertsPublishingPath(instance *verifyv1beta1.Metadata) string {
 
 func formatCertString(certString string) []byte {
 	return []byte(beginTag + certString + endTag)
+}
+
+func onlyRegenerateWhenDaysLeftChanged(instance *verifyv1beta1.Metadata, currentSigningCertConfigMap *corev1.ConfigMap) bool {
+	incomingCertRequestHash, _ := hashstructure.Hash(instance.Spec.SAMLSigningCertificate, nil)
+	return (fmt.Sprintf("%d", incomingCertRequestHash) == currentSigningCertConfigMap.Data[samlSigningCertRequestHashKey]) &&
+		(getStringRegenerateDaysFromInstance(instance) != currentSigningCertConfigMap.Data[samlSigningCertRegenerateWhenDaysLeftKey])
+}
+
+func getStringRegenerateDaysFromInstance(instance *verifyv1beta1.Metadata) string {
+	var instanceRegenerateDays string
+	if instance.Spec.SAMLSigningCertificate.RegenerateWhenDaysLeft == nil {
+		instanceRegenerateDays = ""
+	} else {
+		instanceRegenerateDays = fmt.Sprintf("%d", *instance.Spec.SAMLSigningCertificate.RegenerateWhenDaysLeft)
+	}
+	return instanceRegenerateDays
 }
 
 func logInfo(msg string, metadata metav1.ObjectMeta, additionalKeysAndValues ...interface{}) {

@@ -30,14 +30,15 @@ type CertificateAuthoritySpec struct {
 // CertificateRequestSpec defines the desired state of CertificateRequest
 // +k8s:openapi-gen=true
 type CertificateRequestSpec struct {
-	CountryCode          string                    `json:"countryCode,omitempty"`
-	CommonName           string                    `json:"commonName"`
-	ExpiryMonths         int                       `json:"expiryMonths,omitempty"`
-	Location             string                    `json:"location,omitempty"`
-	Organization         string                    `json:"organization,omitempty"`
-	OrganizationUnit     string                    `json:"organizationUnit,omitempty"`
-	CACert               bool                      `json:"CACert,omitempty"`
-	CertificateAuthority *CertificateAuthoritySpec `json:"certificateAuthority,omitempty"`
+	CountryCode            string                    `json:"countryCode,omitempty"`
+	CommonName             string                    `json:"commonName"`
+	ExpiryMonths           int                       `json:"expiryMonths,omitempty"`
+	Location               string                    `json:"location,omitempty"`
+	Organization           string                    `json:"organization,omitempty"`
+	OrganizationUnit       string                    `json:"organizationUnit,omitempty"`
+	CACert                 bool                      `json:"CACert,omitempty"`
+	CertificateAuthority   *CertificateAuthoritySpec `json:"certificateAuthority,omitempty"`
+	RegenerateWhenDaysLeft *int                      `json:"regenerateWhenDaysLeft,omitempty" hash:"ignore"`
 }
 
 // CertificateRequestStatus defines the observed state of CertificateRequest

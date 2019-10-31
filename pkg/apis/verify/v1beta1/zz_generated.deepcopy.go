@@ -108,6 +108,11 @@ func (in *CertificateRequestSpec) DeepCopyInto(out *CertificateRequestSpec) {
 		*out = new(CertificateAuthoritySpec)
 		**out = **in
 	}
+	if in.RegenerateWhenDaysLeft != nil {
+		in, out := &in.RegenerateWhenDaysLeft, &out.RegenerateWhenDaysLeft
+		*out = new(int)
+		**out = **in
+	}
 	return
 }
 

@@ -44,14 +44,17 @@ const (
 	constantHash = "deadbeef"
 )
 
-func TestReconcile(t *testing.T) {
+func TestReconcileWithSelfSignedSamlSigningCert(t *testing.T) {
 	ctx := context.Background()
 	g := NewGomegaWithT(t)
 
 	// Load test certs
 	fakeMetadataCert, err := ioutil.ReadFile("test.metadata.signing.crt")
 	g.Expect(err).NotTo(HaveOccurred())
-	fakeSamlCert := fakeMetadataCert
+	fakeSamlCert, err := ioutil.ReadFile("test.saml.signing.pem")
+	g.Expect(err).NotTo(HaveOccurred())
+	fakeSamlCert2, err := ioutil.ReadFile("test.saml2.signing.pem")
+	g.Expect(err).NotTo(HaveOccurred())
 	fakeIntCert := fakeMetadataCert
 	fakeRootCert := fakeMetadataCert
 	fakeCustomerCA, err := ioutil.ReadFile("test.ca.crt")
@@ -70,8 +73,9 @@ func TestReconcile(t *testing.T) {
 	hsmClient.GenerateAndSignMetadataReturns(fakeSignedMetadata, nil)
 	hsmClient.CreateSelfSignedCertReturnsOnCall(0, fakeRootCert, nil)
 	hsmClient.CreateSelfSignedCertReturnsOnCall(1, fakeSamlCert, nil)
-	hsmClient.CreateSelfSignedCertReturnsOnCall(2, fakeSamlCert, nil)
+	hsmClient.CreateSelfSignedCertReturnsOnCall(2, fakeSamlCert2, nil)
 	hsmClient.CreateSelfSignedCertReturnsOnCall(3, fakeSamlCert, nil)
+
 	hsmClient.CreateChainedCertReturnsOnCall(0, fakeIntCert, nil)
 	hsmClient.CreateChainedCertReturnsOnCall(1, fakeMetadataCert, nil)
 	hsmClient.CreateChainedCertReturnsOnCall(2, fakeMetadataCert, nil)
@@ -186,10 +190,15 @@ func TestReconcile(t *testing.T) {
 			certConfigMap,
 		)
 	}).Should(Succeed())
-	g.Expect(certConfigMap.BinaryData[samlSigningCertKey]).Should(Equal(fakeSamlCert))
 	defer func() {
 		c.Delete(ctx, certConfigMap)
 	}()
+
+	g.Expect(certConfigMap.BinaryData[samlSigningCertKey]).Should(Equal(fakeSamlCert))
+	g.Expect(certConfigMap.Data[samlSigningCertRequestHashKey]).Should(Equal("9118221895889354214"))
+	g.Expect(certConfigMap.Data[samlSigningCertSerialKey]).Should(Equal("16022334065847793847"))
+	g.Expect(certConfigMap.Data[samlSigningCertRegenerateWhenDaysLeftKey]).Should(Equal(""))
+	g.Expect(certConfigMap.Data[samlSigningCertNotAfterKey]).Should(Equal("Sat, 27 Oct 2029 17:28:59 +0000"))
 
 	// We expect a Secret to be created
 	secretResource := &corev1.Secret{}
@@ -281,6 +290,11 @@ func TestReconcile(t *testing.T) {
 	}).Should(Succeed())
 	g.Expect(reflect.DeepEqual(certConfigMap, afterUpdateCertConfigMap)).To(BeTrue())
 
+	// We expect the SAML signing cert in the metadata to still be the same as the configMap
+	s := &corev1.Secret{}
+	c.Get(ctx, expectedName, s)
+	g.Expect(s.Data["samlSigningCert"]).To(Equal(afterUpdateCertConfigMap.BinaryData["samlSigningCert"]))
+
 	// We expect the Secret data field(s) to get updated
 	g.Eventually(getSecretData("postURL")).Should(Equal([]byte("https://new-post-url/")))
 
@@ -301,14 +315,50 @@ func TestReconcile(t *testing.T) {
 	// After updating the Metadata Reconcile should have been called again
 	g.Eventually(reconcileMetadataCallCount, timeout).Should(Equal(3))
 
-	// We expect the fakehsm.FindOrCreateRSAKeyPair() to have been called:
-	// * 4x earlier (see above)
-	// * 2x after update (signingCert and samlCert)
-	// * 0x after second update?
-	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(6))
+	// We expect the fakehsm.FindOrCreateRSAKeyPair() to still have been called four times:
+	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(4))
 
-	// We do not expecyt the Reconcile func to have been called more than 3 times (create, update, update)
+	// We do not expect the Reconcile func to have been called more than 3 times (create, update, update)
 	g.Consistently(reconcileMetadataCallCount, timeout).Should(Equal(3))
+
+	// Updating the SAML signing cert spec should cause the certConfigMap to be updated
+	metadataResource.Spec.SAMLSigningCertificate.CommonName = "A new common name"
+	g.Expect(c.Update(ctx, metadataResource)).Should(Succeed())
+
+	// fakehsm.FindOrCreateRSAKeyPair() should have been called again to sign the new cert:
+	g.Eventually(hsmClient.FindOrCreateRSAKeyPairCallCount, timeout).Should(Equal(5))
+	g.Eventually(hsmClient.CreateSelfSignedCertCallCount, timeout).Should(Equal(3))
+	//g.Eventually(hsmClient.GenerateAndSignMetadataCallCount, timeout).Should(Equal(4))
+
+	// The cert in the configMap should have changed
+	afterCertUpdateCertConfigMap := &corev1.ConfigMap{}
+	g.Eventually(func() bool {
+		c.Get(ctx, certConfigMapNamespacedName, afterCertUpdateCertConfigMap)
+		return reflect.DeepEqual(afterUpdateCertConfigMap, afterCertUpdateCertConfigMap)
+	}, timeout).Should(BeFalse())
+
+	//But it should match the cert now in the metadata secret
+	s = &corev1.Secret{}
+	g.Eventually(func() []byte {
+		c.Get(ctx, expectedName, s)
+		return s.Data["samlSigningCert"]
+	}, timeout).Should(Equal(afterCertUpdateCertConfigMap.BinaryData["samlSigningCert"]))
+
+	// Updating just the RegenerateWhenDaysLeft field of the cert request should update the configMap but not regenerate the cert itself
+	days := 7
+	metadataResource.Spec.SAMLSigningCertificate.RegenerateWhenDaysLeft = &days
+	g.Expect(c.Update(ctx, metadataResource)).Should(Succeed())
+
+	afterDaysUpdateCertConfigMap := &corev1.ConfigMap{}
+	g.Eventually(func() error {
+		return c.Get(ctx, certConfigMapNamespacedName, afterDaysUpdateCertConfigMap)
+	}, timeout).Should(Succeed())
+	g.Eventually(func() string {
+		c.Get(ctx, certConfigMapNamespacedName, afterDaysUpdateCertConfigMap)
+		return afterDaysUpdateCertConfigMap.Data[samlSigningCertRegenerateWhenDaysLeftKey]
+	}, timeout).Should(Equal("7"))
+	g.Expect(afterCertUpdateCertConfigMap.BinaryData[samlSigningCertKey]).To(Equal(afterDaysUpdateCertConfigMap.BinaryData[samlSigningCertKey]))
+	g.Expect(hsmClient.CreateSelfSignedCertCallCount()).To(Equal(3))
 }
 
 func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
@@ -465,13 +515,14 @@ func TestReconcileMetadataWithProvidedCerts(t *testing.T) {
 
 func TestShouldRegenerate(t *testing.T) {
 	g := NewGomegaWithT(t)
+	emptySamlSigningCertConfigMap := returnEmptyConfigMap()
 
 	t.Run("Hashes should differ, so should be true to regenerate", func(t *testing.T) {
 		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
 
 		mockSecrets.ObjectMeta.Annotations[versionAnnotation] = ""
 
-		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, emptySamlSigningCertConfigMap)).To(BeTrue())
 	})
 
 	t.Run("Hash should now match, but there is no data for the expiration, this simulates a upgrade.", func(t *testing.T) {
@@ -480,7 +531,7 @@ func TestShouldRegenerate(t *testing.T) {
 		mockSecrets.Data[validityDays] = nil
 		mockSecrets.Data[validUntil] = nil
 
-		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, emptySamlSigningCertConfigMap)).To(BeTrue())
 	})
 
 	t.Run("There should be a parse error.", func(t *testing.T) {
@@ -488,7 +539,7 @@ func TestShouldRegenerate(t *testing.T) {
 
 		mockSecrets.Data[validUntil] = []byte("")
 
-		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, emptySamlSigningCertConfigMap)).To(BeTrue())
 	})
 
 	t.Run("Should regenerate as validUntil is in the past.", func(t *testing.T) {
@@ -496,7 +547,7 @@ func TestShouldRegenerate(t *testing.T) {
 
 		mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, -1).Format(time.RFC1123Z))
 
-		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, emptySamlSigningCertConfigMap)).To(BeTrue())
 	})
 
 	t.Run("Should regenerate if half of the metadata validity days remain.", func(t *testing.T) {
@@ -504,13 +555,13 @@ func TestShouldRegenerate(t *testing.T) {
 
 		mockSecrets.Data[validUntil] = []byte(time.Now().AddDate(0, 0, 15).Format(time.RFC1123Z))
 
-		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, emptySamlSigningCertConfigMap)).To(BeTrue())
 	})
 
 	t.Run("Shouldn't regenerate if more than half of the metadata validity days remain.", func(t *testing.T) {
 		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
 
-		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeFalse())
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, emptySamlSigningCertConfigMap)).To(BeFalse())
 	})
 
 	t.Run("Should work with odd values of validityDays", func(t *testing.T) {
@@ -519,7 +570,7 @@ func TestShouldRegenerate(t *testing.T) {
 		mockSecrets.Data[validityDays] = []byte("1")
 		mockSecrets.Data[validUntil] = []byte(time.Now().Format(time.RFC1123Z))
 
-		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, emptySamlSigningCertConfigMap)).To(BeTrue())
 	})
 
 	t.Run("Should regenerate for validity of one day when less than 12 hours validity remaining", func(t *testing.T) {
@@ -528,7 +579,7 @@ func TestShouldRegenerate(t *testing.T) {
 		mockSecrets.Data[validityDays] = []byte("1")
 		mockSecrets.Data[validUntil] = []byte(time.Now().Add(time.Duration(time.Hour * 12)).Format(time.RFC1123Z))
 
-		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, emptySamlSigningCertConfigMap)).To(BeTrue())
 	})
 
 	t.Run("Should not regenerate for validity of one day when more than 12 hours validity remaining", func(t *testing.T) {
@@ -537,36 +588,161 @@ func TestShouldRegenerate(t *testing.T) {
 		mockSecrets.Data[validityDays] = []byte("1")
 		mockSecrets.Data[validUntil] = []byte(time.Now().Add(time.Duration(time.Hour*12 + time.Minute)).Format(time.RFC1123Z))
 
-		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeFalse())
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, emptySamlSigningCertConfigMap)).To(BeFalse())
 	})
 
-	t.Run("Should regenerate if generating SAML signing cert, and the cert is not parsable", func(t *testing.T) {
+	t.Run("Should regenerate if generating SAML signing cert, and the current certs configMap is empty", func(t *testing.T) {
 		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
 
 		mockSecrets.Data[samlSigningCertKey] = []byte("This is not a certificate")
 		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{}
 
-		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, samlSigningCertLife)).To(BeTrue())
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, emptySamlSigningCertConfigMap)).To(BeTrue())
 	})
 
-	t.Run("Should regenerate if generating SAML signing cert, and existing cert is too old", func(t *testing.T) {
+	t.Run("Should regenerate if generating SAML signing cert, and the cert serial is not parsable", func(t *testing.T) {
 		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
 
-		oldCert, _ := ioutil.ReadFile("test.metadata.signing.crt")
-		mockSecrets.Data[samlSigningCertKey] = []byte(oldCert)
+		mockSecrets.Data[samlSigningCertKey] = []byte("This is not a certificate")
 		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{}
+		samlSigningCertConfigMap := returnEmptyConfigMap()
+		samlSigningCertConfigMap.BinaryData = make(map[string][]byte)
 
-		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, time.Duration(time.Hour))).To(BeTrue())
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, samlSigningCertConfigMap)).To(BeTrue())
+	})
+
+	t.Run("Should regenerate if generating SAML signing cert, and cert in secret does not match cert in configMap", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		cert, _ := ioutil.ReadFile("test.metadata.signing.crt")
+		mockSecrets.Data[samlSigningCertKey] = []byte(cert)
+		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{}
+		samlSigningCertConfigMap := returnEmptyConfigMap()
+		samlSigningCertConfigMap.BinaryData = make(map[string][]byte)
+		samlSigningCertConfigMap.Data = map[string]string{
+			samlSigningCertSerialKey: "👋 This isn't the serial you're looking for...",
+		}
+
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, samlSigningCertConfigMap)).To(BeTrue())
+	})
+
+	t.Run("Should regenerate if generating SAML signing cert, and `regenerateWhenDaysLeft` is different", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		cert, _ := ioutil.ReadFile("test.metadata.signing.crt")
+		mockSecrets.Data[samlSigningCertKey] = []byte(cert)
+		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{}
+		regenerateWhenDaysLeft := 7
+		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{
+			RegenerateWhenDaysLeft: &regenerateWhenDaysLeft,
+		}
+		samlSigningCertConfigMap := returnEmptyConfigMap()
+		samlSigningCertConfigMap.BinaryData = make(map[string][]byte)
+		samlSigningCertConfigMap.Data = map[string]string{
+			samlSigningCertSerialKey:                 "14385802316254884995",
+			samlSigningCertRequestHashKey:            "3364228170785370209",
+			samlSigningCertRegenerateWhenDaysLeftKey: "",
+		}
+
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, samlSigningCertConfigMap)).To(BeTrue())
+	})
+
+	t.Run("Should regenerate if generating SAML signing cert, and `regenerateWhenDaysLeft` is being removed", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		cert, _ := ioutil.ReadFile("test.metadata.signing.crt")
+		mockSecrets.Data[samlSigningCertKey] = []byte(cert)
+		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{}
+		samlSigningCertConfigMap := returnEmptyConfigMap()
+		samlSigningCertConfigMap.BinaryData = make(map[string][]byte)
+		samlSigningCertConfigMap.Data = map[string]string{
+			samlSigningCertSerialKey:                 "14385802316254884995",
+			samlSigningCertRequestHashKey:            "3364228170785370209",
+			samlSigningCertRegenerateWhenDaysLeftKey: "7",
+		}
+
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, samlSigningCertConfigMap)).To(BeTrue())
+	})
+
+	t.Run("Should not regenerate if generating SAML signing cert, and `regenerateWhenDaysLeft` is not defined", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		cert, _ := ioutil.ReadFile("test.metadata.signing.crt")
+		mockSecrets.Data[samlSigningCertKey] = []byte(cert)
+		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{}
+		samlSigningCertConfigMap := returnEmptyConfigMap()
+		samlSigningCertConfigMap.BinaryData = make(map[string][]byte)
+		samlSigningCertConfigMap.Data = map[string]string{
+			samlSigningCertSerialKey:                 "14385802316254884995",
+			samlSigningCertRequestHashKey:            "3364228170785370209",
+			samlSigningCertRegenerateWhenDaysLeftKey: "",
+		}
+
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, samlSigningCertConfigMap)).To(BeFalse())
+	})
+
+	t.Run("Should regenerate if generating SAML signing cert, and hashes of `SAMLSigningCertificateSpec` don't match", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		cert, _ := ioutil.ReadFile("test.metadata.signing.crt")
+		mockSecrets.Data[samlSigningCertKey] = []byte(cert)
+		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{}
+		samlSigningCertConfigMap := returnEmptyConfigMap()
+		samlSigningCertConfigMap.BinaryData = make(map[string][]byte)
+		samlSigningCertConfigMap.Data = map[string]string{
+			samlSigningCertSerialKey:      "14385802316254884995",
+			samlSigningCertRequestHashKey: "👋 This isn't the hash you're looking for...",
+		}
+
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, samlSigningCertConfigMap)).To(BeTrue())
+	})
+
+	t.Run("Should regenerate if generating SAML signing cert, and configMap cert is within RegenerateWhenDaysLeft threshold", func(t *testing.T) {
+		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
+
+		cert, _ := ioutil.ReadFile("test.metadata.signing.crt")
+		mockSecrets.Data[samlSigningCertKey] = []byte(cert)
+		regenerateWhenDaysLeft := 1
+		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{
+			RegenerateWhenDaysLeft: &regenerateWhenDaysLeft,
+		}
+		samlSigningCertConfigMap := returnEmptyConfigMap()
+		samlSigningCertConfigMap.BinaryData = make(map[string][]byte)
+
+		loc, _ := time.LoadLocation("UTC")
+		twentyThreeHoursAway := time.Now().In(loc).Add(time.Duration(time.Hour * 23)).Format(time.RFC1123Z)
+		samlSigningCertConfigMap.Data = map[string]string{
+			samlSigningCertSerialKey:                 "14385802316254884995",
+			samlSigningCertRegenerateWhenDaysLeftKey: "1",
+			samlSigningCertRequestHashKey:            "3364228170785370209",
+			samlSigningCertNotAfterKey:               twentyThreeHoursAway,
+		}
+
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, samlSigningCertConfigMap)).To(BeTrue())
 	})
 
 	t.Run("Should not regenerate if using generated SAML signing cert and existing cert is still good", func(t *testing.T) {
 		mockMetadata, mockSecrets := returnNonRegeneratingMetadataAndSecret()
 
-		oldCert, _ := ioutil.ReadFile("test.metadata.signing.crt")
-		mockSecrets.Data["samlSigningCert"] = []byte(oldCert)
-		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{}
+		cert, _ := ioutil.ReadFile("test.metadata.signing.crt")
+		mockSecrets.Data[samlSigningCertKey] = []byte(cert)
+		regenerateWhenDaysLeft := 1
+		mockMetadata.Spec.SAMLSigningCertificate = &verifyv1beta1.CertificateRequestSpec{
+			RegenerateWhenDaysLeft: &regenerateWhenDaysLeft,
+		}
+		samlSigningCertConfigMap := returnEmptyConfigMap()
+		samlSigningCertConfigMap.BinaryData = make(map[string][]byte)
 
-		g.Expect(shouldRegenerate(&mockSecrets, constantHash, mockMetadata, time.Hour*24*time.Duration(1000))).To(BeFalse())
+		loc, _ := time.LoadLocation("UTC")
+		twentyThreeDaysAway := time.Now().In(loc).Add(time.Duration(time.Hour * 24 * 23)).Format(time.RFC1123Z)
+		samlSigningCertConfigMap.Data = map[string]string{
+			samlSigningCertSerialKey:                 "14385802316254884995",
+			samlSigningCertRegenerateWhenDaysLeftKey: "1",
+			samlSigningCertRequestHashKey:            "3364228170785370209",
+			samlSigningCertNotAfterKey:               twentyThreeDaysAway,
+		}
+
+		g.Expect(shouldRegenerateMetadata(&mockSecrets, constantHash, mockMetadata, samlSigningCertConfigMap)).To(BeFalse())
 	})
 }
 
@@ -585,6 +761,16 @@ func returnNonRegeneratingMetadataAndSecret() (mockMetadata verifyv1beta1.Metada
 	}
 
 	return
+}
+
+func returnEmptyConfigMap() corev1.ConfigMap {
+	return corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "configMapName",
+			Namespace: "configMapNamespace",
+		},
+		BinaryData: nil,
+	}
 }
 
 func checkDateIsInRange(t *testing.T, byteStrInputDate []byte) bool {
