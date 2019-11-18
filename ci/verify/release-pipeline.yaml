@@ -109,17 +109,18 @@ spec:
       plan:
 
       - in_parallel:
-        - get: src
-          passed: [build]
-          trigger: true
-        - get: vmc-image
-          passed: [build]
-          trigger: true
-          params: {skip_download: true}
-        - get: cloudhsm-image
-          trigger: true
-          params: {skip_download: true}
-        - get: release
+          steps:
+          - get: src
+            passed: [build]
+            trigger: true
+          - get: vmc-image
+            passed: [build]
+            trigger: true
+            params: {skip_download: true}
+          - get: cloudhsm-image
+            trigger: true
+            params: {skip_download: true}
+          - get: release
 
       - task: generate-chart-values
         config:
