@@ -52,6 +52,8 @@ import java.security.Security;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.ECPublicKey;
+import java.util.Enumeration;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -184,6 +186,13 @@ public class MetadataGenerator implements Callable<Void> {
     private BasicX509Credential getSigningCredentialFromCloudHSM(X509Certificate cert, String label) throws Exception {
         KeyStore cloudHsmStore = KeyStore.getInstance("Cavium");
         cloudHsmStore.load(null, null);
+        Iterator<String> stringIterator = cloudHsmStore.aliases().asIterator();
+        StringBuilder stringBuilder = new StringBuilder();
+        while (stringIterator.hasNext()) {
+            stringBuilder.append(stringIterator.next()).append("\\n");
+        }
+        LOG.info("Cavium keystore aliases: \\n" + stringBuilder.toString());
+
         PrivateKey key = (PrivateKey) cloudHsmStore.getKey(label, null);
         return new BasicX509Credential(cert, key);
     }
