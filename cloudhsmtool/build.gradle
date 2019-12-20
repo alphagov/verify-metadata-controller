@@ -26,6 +26,6 @@ dependencies {
     'org.apache.logging.log4j:log4j-core:2.8'
 
     if (project.hasProperty('cloudhsm')) {
-      implementation name: 'cloudhsm-2.0.3'
+      implementation name: 'cloudhsm-3.0.0'
     }
 }
