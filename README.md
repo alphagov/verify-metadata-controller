@@ -1,7 +1,7 @@
 # verify-metadata-controller
 
 ## Overview
-
+Small commit
 Kubernetes Custom Resource and Controller for generating and signing SAML metadata
 
 ## Requirements
