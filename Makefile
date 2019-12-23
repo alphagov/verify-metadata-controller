@@ -30,7 +30,6 @@ deploy: manifests
 # Generate manifests e.g. CRD, RBAC etc.
 manifests:
 	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go all
-	cp config/crds/*.yaml chart/templates/
 	echo "the helm chart does not get automatically updated you may need to tweak it if new values generated"
 
 # Run go fmt against code
