@@ -1,0 +1,27 @@
+---
+apiVersion: storage.govsvc.uk/v1beta1
+kind: ImageRepository
+metadata:
+  name: release
+  labels:
+    group.access.govsvc.uk: pipeline
+spec:
+  aws: {}
+---
+apiVersion: storage.govsvc.uk/v1beta1
+kind: ImageRepository
+metadata:
+  name: metadata-controller
+  labels:
+    group.access.govsvc.uk: pipeline
+spec:
+  aws: {}
+---
+apiVersion: storage.govsvc.uk/v1beta1
+kind: ImageRepository
+metadata:
+  name: cloudhsm-client
+  labels:
+    group.access.govsvc.uk: pipeline
+spec:
+  aws: {}
