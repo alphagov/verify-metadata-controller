@@ -19,21 +19,6 @@ spec:
       approvers: ((trusted-developers.github-accounts))
       required_approval_count: 0
 
-    harbor_source: &harbor_source
-      username: ((harbor.harbor_username))
-      password: ((harbor.harbor_password))
-      harbor:
-        prevent_vul: "false"
-      notary:
-        url: ((harbor.notary_url))
-        root_key: ((harbor.root_key))
-        delegate_key: ((harbor.ci_key))
-        passphrase:
-          root: ((harbor.notary_root_passphrase))
-          snapshot: ((harbor.notary_snapshot_passphrase))
-          targets: ((harbor.notary_targets_passphrase))
-          delegation: ((harbor.notary_delegation_passphrase))
-
     task_toolbox: &task_toolbox
       type: docker-image
       source:
@@ -70,25 +55,26 @@ spec:
         branch: sandbox
 
     - name: release
-      type: harbor
+      type: registry-image
       icon: tag
-      source:
-        <<: *harbor_source
-        repository: registry.((cluster.domain))/eidas/vmc-release
+      source: &ecr_source
+        username: ((pipeline.ImageRegistryUsername))
+        password: ((pipeline.ImageRegistryPassword))
+        repository: ((release.ImageRepositoryURI))
 
     - name: vmc-image
-      type: harbor
+      type: registry-image
       icon: docker
       source:
-        <<: *harbor_source
-        repository: registry.((cluster.domain))/eidas/metadata-controller
+        <<: *ecr_source
+        repository: ((metadata-controller.ImageRepositoryURI))
 
     - name: cloudhsm-image
-      type: harbor
+      type: registry-image
       icon: folder-key-network
       source:
-        <<: *harbor_source
-        repository: registry.((cluster.domain))/eidas/cloudhsm-client
+        <<: *ecr_source
+        repository: ((cloudhsm-client.ImageRepositoryURI))
 
     - name: alpine-image
       type: docker-image
@@ -106,11 +92,29 @@ spec:
       - get: src
         trigger: true
 
+      - task: build
+        privileged: true
+        config: &build_config
+          platform: linux
+          image_resource:
+            type: registry-image
+            source:
+              repository: vito/oci-build-task
+              tag: cfb2983956145f54a4996c2aff5fc598856c8722922a6e73f9ebfa3d9b3f9813
+          params:
+            CONTEXT: src
+          inputs:
+          - name: src
+          outputs:
+          - name: image
+          caches:
+          - path: cache
+          run:
+            path: build
       - put: vmc-image
-        get_params: {skip_download: true}
-        params:
-          build: src
-          <<: *image_tag
+        params: &image_put_params
+          image: image/image.tar
+          additional_tags: src/.git/short_ref
 
     - name: release
       serial: true
@@ -124,10 +128,8 @@ spec:
           - get: vmc-image
             passed: [build]
             trigger: true
-            params: {skip_download: true}
           - get: cloudhsm-image
             trigger: true
-            params: {skip_download: true}
           - get: alpine-image
             params: {rootfs: true}
 
@@ -143,6 +145,9 @@ spec:
           - name: chart-values
           run:
             path: /bin/bash
+            params:
+              VMC_REPOSITORY_URI: ((metadata-controller.ImageRepositoryURI))
+              CLOUDHSM_CLIENT_REPOSITORY_URI: ((cloudhsm-client.ImageRepositoryURI))
             args:
               - -euc
               - |
@@ -151,11 +156,11 @@ spec:
                 cat << EOF > ./overrides.yaml
                 vmc:
                   image:
-                    repository: $(cat vmc-image/repository)@$(cat vmc-image/digest | cut -d ':' -f 1)
+                    repository: $VMC_REPOSITORY_URI@$(cat vmc-image/digest | cut -d ':' -f 1)
                     tag: $(cat vmc-image/digest | cut -d ':' -f 2)
                 hsm:
                   image:
-                    repository: $(cat cloudhsm-image/repository)@$(cat cloudhsm-image/digest | cut -d ':' -f 1)
+                    repository: $CLOUDHSM_CLIENT_REPOSITORY_URI@$(cat cloudhsm-image/digest | cut -d ':' -f 1)
                     tag: $(cat cloudhsm-image/digest | cut -d ':' -f 2)
                 EOF
                 echo "Merging with chart values..."
@@ -239,7 +244,6 @@ spec:
               tar -rf alpine-image/rootfs.tar vmc-chart-package/
 
       - put: release
-        get_params: {skip_download: true}
         params:
-          import_file: alpine-image/rootfs.tar
-          <<: *image_tag
+          image: alpine-image/rootfs.tar
+          additional_tags: src/.git/short_ref
