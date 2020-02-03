@@ -54,6 +54,22 @@ spec:
         <<: *github_source
         branch: sandbox
 
+    - name: cloudhsm-config
+      type: github
+      icon: folder-key-network-outline
+      source:
+        uri: https://github.com/alphagov/verify-proxy-node.git
+        organization: alphagov
+        owner: alphagov
+        repository: verify-proxy-node
+        branch: master
+        github_api_token: ((github.api-token))
+        access_token: ((github.api-token))
+        approvers: ((trusted-developers.github-accounts))
+        required_approval_count: 2
+        paths:
+        - cloudhsm
+
     - name: release
       type: registry-image
       icon: tag
@@ -92,7 +108,7 @@ spec:
       - get: src
         trigger: true
 
-      - task: build
+      - task: build-vmc
         privileged: true
         config: &build_config
           platform: linux
@@ -116,6 +132,19 @@ spec:
         params: &image_put_params
           image: image/image.tar
           additional_tags: src/.git/short_ref
+
+      - build-cloudhsm-client
+        privileged: true
+        config:
+          <<: *build_config
+          params:
+            CONTEXT: cloudhsm-config/cloudhsm
+          inputs:
+          - name: cloudhsm-config
+      - put: cloudhsm-client-image
+        params:
+          <<: *image_put_params
+          additional_tags: cloudhsm-config/.git/short_ref
 
     - name: release
       serial: true
