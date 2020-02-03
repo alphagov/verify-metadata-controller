@@ -142,11 +142,11 @@ spec:
           - name: cloudhsm-image
           outputs:
           - name: chart-values
+          params:
+            VMC_REPOSITORY_URI: ((metadata-controller.ImageRepositoryURI))
+            CLOUDHSM_CLIENT_REPOSITORY_URI: ((cloudhsm-client.ImageRepositoryURI))
           run:
             path: /bin/bash
-            params:
-              VMC_REPOSITORY_URI: ((metadata-controller.ImageRepositoryURI))
-              CLOUDHSM_CLIENT_REPOSITORY_URI: ((cloudhsm-client.ImageRepositoryURI))
             args:
               - -euc
               - |
