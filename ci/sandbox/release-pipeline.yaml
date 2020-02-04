@@ -30,6 +30,20 @@ spec:
       tag_as_latest: true
       tag_prefix: v
 
+
+    build_config: &build_config
+      platform: linux
+      image_resource:
+        type: registry-image
+        source:
+          repository: vito/oci-build-task
+        version:
+          digest: sha256:cfb2983956145f54a4996c2aff5fc598856c8722922a6e73f9ebfa3d9b3f9813
+      caches:
+      - path: cache
+      run:
+        path: build
+
     resource_types:
 
     - name: github
@@ -110,27 +124,18 @@ spec:
 
       - task: build-vmc
         privileged: true
-        config: &build_config
-          platform: linux
-          image_resource:
-            type: registry-image
-            source:
-              repository: vito/oci-build-task
-            version:
-              digest: sha256:cfb2983956145f54a4996c2aff5fc598856c8722922a6e73f9ebfa3d9b3f9813
+        config:
+          <<: *build_config
           params:
             CONTEXT: src
           inputs:
           - name: src
           outputs:
-          - name: image
-          caches:
-          - path: cache
-          run:
-            path: build
+          - name: vmc-image-file
+            path: image
       - put: vmc-image
-        params: &image_put_params
-          image: image/image.tar
+        params:
+          image: vmc-image-file/image.tar
           additional_tags: src/.git/short_ref
 
       - build-cloudhsm-client
@@ -141,9 +146,12 @@ spec:
             CONTEXT: cloudhsm-config/cloudhsm
           inputs:
           - name: cloudhsm-config
+          outputs:
+          - name: cloudhsm-client-image-file
+            path: image
       - put: cloudhsm-client-image
         params:
-          <<: *image_put_params
+          image: cloudhsm-client-image-file/image.tar
           additional_tags: cloudhsm-config/.git/short_ref
 
     - name: release
