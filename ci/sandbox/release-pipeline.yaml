@@ -106,13 +106,6 @@ spec:
         <<: *ecr_source
         repository: ((cloudhsm-client.ImageRepositoryURI))
 
-    - name: alpine-image
-      type: docker-image
-      icon: toolbox
-      source:
-        repository: alpine
-        tag: 3
-
     jobs:
 
     - name: build
@@ -168,8 +161,6 @@ spec:
             trigger: true
           - get: cloudhsm-image
             trigger: true
-          - get: alpine-image
-            params: {rootfs: true}
 
       - task: generate-chart-values
         config:
@@ -268,9 +259,8 @@ spec:
           inputs:
           - name: chart-package
           - name: chart-version
-          - name: alpine-image
           outputs:
-          - name: alpine-image
+          - name: vmc-chart-package
           run:
             path: /bin/bash
             args:
@@ -279,9 +269,34 @@ spec:
               mkdir -p vmc-chart-package
               cp chart-version/tag vmc-chart-package/
               cp -r chart-package/* vmc-chart-package/
-              tar -rf alpine-image/rootfs.tar vmc-chart-package/
+
+      - task: build-chart-package-image
+        privileged: true
+        config:
+          platform: linux
+          image_resource:
+            type: registry-image
+            source:
+              repository: vito/oci-build-task
+            version:
+              digest: sha256:cfb2983956145f54a4996c2aff5fc598856c8722922a6e73f9ebfa3d9b3f9813
+          caches:
+          - path: cache
+          inputs:
+          - name: vmc-chart-package
+          outputs:
+          - name: chart-image-file
+            path: image
+          run:
+            path: /bin/ash
+            args:
+            - -euc
+            - |
+              echo -e "FROM alpine:3" > ./Dockerfile
+              echo -e "COPY vmc-chart-package /vmc-chart-package/" >> ./Dockerfile
+              CONTEXT=. build
 
       - put: release
         params:
-          image: alpine-image/rootfs.tar
+          image: chart-image-file/image.tar
           additional_tags: src/.git/short_ref
