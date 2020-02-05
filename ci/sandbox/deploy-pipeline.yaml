@@ -99,7 +99,7 @@ spec:
             CLUSTER_NAME: ((cluster.name))
             CLUSTER_DOMAIN: ((cluster.domain))
             RELEASE_NAME: v1
-            RELEASE_NAMESPACE: ((cluster-deployer.namespace))
+            RELEASE_NAMESPACE: ((namespace-deployer.namespace))
             CLUSTER_PRIVATE_KEY: ((cluster.privateKey))
             CLOUDHSM_IP: ((cluster.cloudHsmIp))
           run:
@@ -133,11 +133,11 @@ spec:
           inputs:
           - name: manifests
           params:
-            KUBERNETES_SERVICE_ACCOUNT: ((cluster-deployer))
-            KUBERNETES_TOKEN: ((cluster-deployer.token))
+            KUBERNETES_SERVICE_ACCOUNT: ((namespace-deployer))
+            KUBERNETES_TOKEN: ((namespace-deployer.token))
             KUBERNETES_API: kubernetes.default.svc
             RELEASE_NAME: v1
-            RELEASE_NAMESPACE: ((cluster-deployer.namespace))
+            RELEASE_NAMESPACE: ((namespace-deployer.namespace))
             APP_NAME: metadata-controller
           run:
             path: /bin/bash
