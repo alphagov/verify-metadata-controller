@@ -131,6 +131,8 @@ spec:
           image: vmc-image-file/image.tar
           additional_tags: src/.git/short_ref
 
+      - get: cloudhsm-config
+        trigger: true
       - task: build-cloudhsm-client
         privileged: true
         config:
