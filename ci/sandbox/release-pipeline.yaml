@@ -144,7 +144,7 @@ spec:
           outputs:
           - name: cloudhsm-client-image-file
             path: image
-      - put: cloudhsm-client-image
+      - put: cloudhsm-image
         params:
           image: cloudhsm-client-image-file/image.tar
           additional_tags: cloudhsm-config/.git/short_ref
