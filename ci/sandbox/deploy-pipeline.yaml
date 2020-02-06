@@ -19,21 +19,6 @@ spec:
       approvers: ((trusted-developers.github-accounts))
       required_approval_count: 2
 
-    harbor_source: &harbor_source
-      username: ((harbor.harbor_username))
-      password: ((harbor.harbor_password))
-      harbor:
-        prevent_vul: "false"
-      notary:
-        url: ((harbor.notary_url))
-        root_key: ((harbor.root_key))
-        delegate_key: ((harbor.ci_key))
-        passphrase:
-          root: ((harbor.notary_root_passphrase))
-          snapshot: ((harbor.notary_snapshot_passphrase))
-          targets: ((harbor.notary_targets_passphrase))
-          delegation: ((harbor.notary_delegation_passphrase))
-
     task_toolbox: &task_toolbox
       type: docker-image
       source:
@@ -58,11 +43,12 @@ spec:
     resources:
 
     - name: release
-      type: harbor
+      type: registry-image
       icon: tag
       source:
-        <<: *harbor_source
-        repository: registry.((cluster.domain))/eidas/vmc-release
+        username: ((pipeline.ImageRegistryUsername))
+        password: ((pipeline.ImageRegistryPassword))
+        repository: ((release.ImageRepositoryURI))
 
     jobs:
 

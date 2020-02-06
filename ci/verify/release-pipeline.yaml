@@ -19,21 +19,6 @@ spec:
       approvers: ((trusted-developers.github-accounts))
       required_approval_count: 2
 
-    harbor_source: &harbor_source
-      username: ((harbor.harbor_username))
-      password: ((harbor.harbor_password))
-      harbor:
-        prevent_vul: "false"
-      notary:
-        url: ((harbor.notary_url))
-        root_key: ((harbor.root_key))
-        delegate_key: ((harbor.ci_key))
-        passphrase:
-          root: ((harbor.notary_root_passphrase))
-          snapshot: ((harbor.notary_snapshot_passphrase))
-          targets: ((harbor.notary_targets_passphrase))
-          delegation: ((harbor.notary_delegation_passphrase))
-
     task_toolbox: &task_toolbox
       type: docker-image
       source:
@@ -76,18 +61,19 @@ spec:
         <<: *github_source
 
     - name: vmc-image
-      type: harbor
+      type: registry-image
       icon: docker
-      source:
-        <<: *harbor_source
-        repository: registry.((cluster.domain))/eidas/metadata-controller
+      source: &ecr_source
+        username: ((pipeline.ImageRegistryUsername))
+        password: ((pipeline.ImageRegistryPassword))
+        repository: ((metadata-controller.ImageRepositoryURI))
 
     - name: cloudhsm-image
-      type: harbor
+      type: registry-image
       icon: folder-key-network
       source:
-        <<: *harbor_source
-        repository: registry.((cluster.domain))/eidas/cloudhsm-client
+        <<: *ecr_source
+        repository: ((cloudhsm-client.ImageRepositoryURI))
 
     jobs:
 
@@ -99,7 +85,6 @@ spec:
         trigger: true
 
       - put: vmc-image
-        get_params: {skip_download: true}
         params:
           build: src
           <<: *image_tag
@@ -132,6 +117,9 @@ spec:
           - name: cloudhsm-image
           outputs:
           - name: chart-values
+          params:
+            VMC_REPOSITORY_URI: ((metadata-controller.ImageRepositoryURI))
+            CLOUDHSM_CLIENT_REPOSITORY_URI: ((cloudhsm-client.ImageRepositoryURI))
           run:
             path: /bin/bash
             args:
@@ -142,11 +130,11 @@ spec:
                 cat << EOF > ./overrides.yaml
                 vmc:
                   image:
-                    repository: $(cat vmc-image/repository)@$(cat vmc-image/digest | cut -d ':' -f 1)
+                    repository: $VMC_REPOSITORY_URI@$(cat vmc-image/digest | cut -d ':' -f 1)
                     tag: $(cat vmc-image/digest | cut -d ':' -f 2)
                 hsm:
                   image:
-                    repository: $(cat cloudhsm-image/repository)@$(cat cloudhsm-image/digest | cut -d ':' -f 1)
+                    repository: $CLOUDHSM_CLIENT_REPOSITORY_URI@$(cat cloudhsm-image/digest | cut -d ':' -f 1)
                     tag: $(cat cloudhsm-image/digest | cut -d ':' -f 2)
                 EOF
                 echo "Merging with chart values..."
