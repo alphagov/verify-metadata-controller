@@ -25,11 +25,6 @@ spec:
         repository: ((concourse.task-toolbox-image))
         tag: ((concourse.task-toolbox-tag))
 
-    image_tag: &image_tag
-      tag_file: src/.git/short_ref
-      tag_as_latest: true
-      tag_prefix: v
-
     resource_types:
 
     - name: github
@@ -77,10 +72,29 @@ spec:
       - get: src
         trigger: true
 
+      - task: build
+        privileged: true
+        config: &build_config
+          platform: linux
+          image_resource:
+            type: registry-image
+            source:
+              repository: vito/oci-build-task
+              tag: cfb2983956145f54a4996c2aff5fc598856c8722922a6e73f9ebfa3d9b3f9813
+          params:
+            CONTEXT: src
+          inputs:
+          - name: src
+          outputs:
+          - name: image
+          caches:
+          - path: cache
+          run:
+            path: build
       - put: vmc-image
-        params:
-          build: src
-          <<: *image_tag
+        params: &image_put_params
+          image: image/image.tar
+          additional_tags: src/.git/short_ref
 
     - name: release
       serial: true
