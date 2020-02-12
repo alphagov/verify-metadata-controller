@@ -10,10 +10,8 @@ spec:
   config:
 
     github_source: &github_source
-      uri: https://github.com/alphagov/verify-metadata-controller.git
       organization: alphagov
       owner: alphagov
-      repository: verify-metadata-controller
       github_api_token: ((github.api-token))
       access_token: ((github.api-token))
       approvers: ((trusted-developers.github-accounts))
@@ -35,11 +33,13 @@ spec:
 
     resources:
 
-    - name: src
+    - name: vmc-src
       type: github
       icon: github-circle
       source:
         <<: *github_source
+        uri: https://github.com/alphagov/verify-metadata-controller.git
+        repository: verify-metadata-controller
         branch: master
 
     - name: release
@@ -47,6 +47,8 @@ spec:
       icon: tag
       source:
         <<: *github_source
+        uri: https://github.com/alphagov/verify-metadata-controller.git
+        repository: verify-metadata-controller
 
     - name: vmc-image
       type: registry-image
@@ -56,7 +58,16 @@ spec:
         password: ((pipeline.ImageRegistryPassword))
         repository: ((metadata-controller.ImageRepositoryURI))
 
-    - name: cloudhsm-image
+    - name: cloudhsm-client-src
+      type: github
+      source:
+        <<: *github_source
+        uri: https://github.com/alphagov/verify-proxy-node.git
+        repository: verify-proxy-node
+        branch: master
+        paths: [cloudhsm]
+
+    - name: cloudhsm-client-image
       type: registry-image
       icon: folder-key-network
       source:
@@ -65,16 +76,14 @@ spec:
 
     jobs:
 
-    - name: build
+    - name: build-vmc
       serial: true
       plan:
-
-      - get: src
+      - get: vmc-src
         trigger: true
-
-      - task: build
+      - task: build-vmc
         privileged: true
-        config: &build_config
+        config:
           platform: linux
           image_resource:
             type: registry-image
@@ -83,9 +92,9 @@ spec:
             version:
               digest: sha256:cfb2983956145f54a4996c2aff5fc598856c8722922a6e73f9ebfa3d9b3f9813
           params:
-            CONTEXT: src
+            CONTEXT: vmc-src
           inputs:
-          - name: src
+          - name: vmc-src
           outputs:
           - name: image
           caches:
@@ -95,34 +104,63 @@ spec:
       - put: vmc-image
         params: &image_put_params
           image: image/image.tar
-          additional_tags: src/.git/short_ref
+          additional_tags: vmc-src/.git/short_ref
+
+    - name: build-cloudhsm-client
+      serial: true
+      plan:
+      - get: cloudhsm-client-src
+        trigger: true
+      - task: build-cloudhsm
+        privileged: true
+        config:
+          platform: linux
+          image_resource:
+            type: registry-image
+            source:
+              repository: vito/oci-build-task
+            version:
+              digest: sha256:cfb2983956145f54a4996c2aff5fc598856c8722922a6e73f9ebfa3d9b3f9813
+          params:
+            CONTEXT: cloudhsm-client-src/cloudhsm
+          inputs:
+          - name: cloudhsm-client-src
+          outputs:
+          - name: image
+          caches:
+          - path: cache
+          run:
+            path: build
+      - put: cloudhsm-client-image
+        params:
+          image: image/image.tar
+          additional_tags: cloudhsm-client-src/.git/short_ref
 
     - name: release
       serial: true
       plan:
-
       - in_parallel:
           steps:
-          - get: src
-            passed: [build]
+          - get: vmc-src
+            passed: [build-vmc]
             trigger: true
           - get: vmc-image
-            passed: [build]
+            passed: [build-vmc]
             trigger: true
             params: {skip_download: true}
-          - get: cloudhsm-image
+          - get: cloudhsm-client-image
+            passed: [build-cloudhsm-client]
             trigger: true
             params: {skip_download: true}
           - get: release
-
       - task: generate-chart-values
         config:
           platform: linux
           image_resource: *task_toolbox
           inputs:
-          - name: src
+          - name: vmc-src
           - name: vmc-image
-          - name: cloudhsm-image
+          - name: cloudhsm-client-image
           outputs:
           - name: chart-values
           params:
@@ -142,11 +180,11 @@ spec:
                     tag: $(cat vmc-image/digest | cut -d ':' -f 2)
                 hsm:
                   image:
-                    repository: $CLOUDHSM_CLIENT_REPOSITORY_URI@$(cat cloudhsm-image/digest | cut -d ':' -f 1)
-                    tag: $(cat cloudhsm-image/digest | cut -d ':' -f 2)
+                    repository: $CLOUDHSM_CLIENT_REPOSITORY_URI@$(cat cloudhsm-client-image/digest | cut -d ':' -f 1)
+                    tag: $(cat cloudhsm-client-image/digest | cut -d ':' -f 2)
                 EOF
                 echo "Merging with chart values..."
-                spruce merge ./src/chart/values.yaml ./overrides.yaml | tee -a chart-values/values.yaml
+                spruce merge ./vmc-src/chart/values.yaml ./overrides.yaml | tee -a chart-values/values.yaml
 
       - task: generate-chart-version
         config:
@@ -175,7 +213,7 @@ spec:
           platform: linux
           image_resource: *task_toolbox
           inputs:
-          - name: src
+          - name: vmc-src
           - name: chart-version
           - name: chart-values
           outputs:
@@ -193,11 +231,11 @@ spec:
               gpg --export-secret-keys > ~/.gnupg/pubring.gpg
               KEY_ID="$(gpg --list-secret-keys --with-colons  | awk -F: '/uid:/ {print $10}' | head -n1)"
               echo "Building chart with release values..."
-              CHART_NAME=$(yq . < ./src/chart/Chart.yaml | jq -r .name)
-              cp -r "./src/chart" "./${CHART_NAME}"
+              CHART_NAME=$(yq . < ./vmc-src/chart/Chart.yaml | jq -r .name)
+              cp -r "./vmc-src/chart" "./${CHART_NAME}"
               cp "./chart-values/values.yaml" "./${CHART_NAME}/values.yaml"
               mkdir -p chart-package
-              APP_VERSION=$(cat ./src/.git/short_ref)
+              APP_VERSION=$(cat ./vmc-src/.git/short_ref)
               CHART_VERSION=$(cat ./chart-version/tag)
               echo "Generating signed (${KEY_ID}) helm package for ${CHART_NAME} at app-version: '${APP_VERSION}' chart-version: '${CHART_VERSION}'..."
               helm package \
