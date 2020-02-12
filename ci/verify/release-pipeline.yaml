@@ -147,11 +147,9 @@ spec:
           - get: vmc-image
             passed: [build-vmc]
             trigger: true
-            params: {skip_download: true}
           - get: cloudhsm-client-image
             passed: [build-cloudhsm-client]
             trigger: true
-            params: {skip_download: true}
           - get: release
       - task: generate-chart-values
         config:
