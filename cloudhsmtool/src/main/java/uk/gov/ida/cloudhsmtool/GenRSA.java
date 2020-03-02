@@ -44,11 +44,19 @@ public class GenRSA extends HSMCli implements Callable<Void> {
 
         System.out.println("Public label we're using: " + hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
 
-        boolean certificateEntry = ks.isCertificateEntry(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
-        System.out.println("isCertificateEntry: " + certificateEntry);
+        try {
+            boolean certificateEntry = ks.isCertificateEntry(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
+            System.out.println("isCertificateEntry: " + certificateEntry);
+        } catch (Exception e) {
+            System.out.println("isCertificateEntry threw an error: " + e.getMessage());
+        }
 
-        boolean b = ks.containsAlias(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
-        System.out.println("isCertificateEntry: " + b);
+        try {
+            boolean b = ks.containsAlias(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
+            System.out.println("containsAlias: " + b);
+        } catch (Exception e) {
+            System.out.println("containsAlias threw an error: " + e.getMessage());
+        }
 
         try {
             KeyStore.Entry entry = ks.getEntry(hsmKeyLabel + LABEL_PUBLIC_SUFFIX, null);
@@ -57,8 +65,13 @@ public class GenRSA extends HSMCli implements Callable<Void> {
             System.out.println("entry threw an error: " + e.getMessage());
         }
 
-        boolean keyEntry = ks.isKeyEntry(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
-        System.out.println("isKeyEntry: " + keyEntry);
+        try {
+            boolean keyEntry = ks.isKeyEntry(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
+            System.out.println("isKeyEntry: " + keyEntry);
+        } catch (Exception e) {
+            System.out.println("isKeyEntry threw an error: " + e.getMessage());
+        }
+
 
         Key privateKey = ks.getKey(hsmKeyLabel, null);
         if (!(privateKey instanceof PrivateKey)) {
