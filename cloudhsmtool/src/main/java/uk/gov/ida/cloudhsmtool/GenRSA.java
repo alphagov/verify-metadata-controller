@@ -41,6 +41,30 @@ public class GenRSA extends HSMCli implements Callable<Void> {
         }
         System.out.println("Cavium keystore aliases: \\n" + stringBuilder.toString());
 
+
+        System.out.println("Public label we're using: " + hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
+
+        boolean certificateEntry = ks.isCertificateEntry(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
+        System.out.println("isCertificateEntry: " + certificateEntry);
+
+        boolean b = ks.containsAlias(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
+        System.out.println("isCertificateEntry: " + b);
+
+        try {
+            KeyStore.Entry entry = ks.getEntry(hsmKeyLabel + LABEL_PUBLIC_SUFFIX, null);
+            System.out.println("entry: " + entry);
+        } catch (Exception e) {
+            System.out.println("entry threw an error: " + e.getMessage());
+        }
+
+        boolean keyEntry = ks.isKeyEntry(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
+        System.out.println("isKeyEntry: " + keyEntry);
+
+        Key privateKey = ks.getKey(hsmKeyLabel, null);
+        if (!(privateKey instanceof PrivateKey)) {
+            throw new Exception("failed to fetch PrivateKey for "+hsmKeyLabel);
+        }
+
         Key publicKey = ks.getKey(hsmKeyLabel + LABEL_PUBLIC_SUFFIX, null);
         if (!(publicKey instanceof PublicKey)) {
             System.out.println("String repr of public key: " + publicKey.toString());
@@ -48,11 +72,7 @@ public class GenRSA extends HSMCli implements Callable<Void> {
             throw new Exception("failed to fetch PublicKey for "+hsmKeyLabel+"public");
         }
 
-        Key privateKey = ks.getKey(hsmKeyLabel, null);
-        if (!(privateKey instanceof PrivateKey)) {
-            throw new Exception("failed to fetch PrivateKey for "+hsmKeyLabel);
-        }
-
+        
         KeyPair kp = new KeyPair((PublicKey) publicKey, (PrivateKey) privateKey);
         System.out.println(toPEMFormat("PUBLIC KEY", publicKey.getEncoded()));
         return null;
