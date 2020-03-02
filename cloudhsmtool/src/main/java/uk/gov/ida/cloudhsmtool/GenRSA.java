@@ -26,7 +26,7 @@ public class GenRSA extends HSMCli implements Callable<Void> {
     public Void call() throws Exception {
 
         KeyStore ks = getKeystore();
-        String hsmKeyLabel = "test" + getHsmKeyLabel();
+        String hsmKeyLabel = getHsmKeyLabel();
         if (!ks.containsAlias(hsmKeyLabel)) {
             System.out.println("Alias not found in keyStore, generating new RSA KeyPair");
             generateRSAKeyPair(DEFAULT_KEY_SIZE, hsmKeyLabel);
