@@ -41,16 +41,18 @@ public class GenRSA extends HSMCli implements Callable<Void> {
         }
         System.out.println("Cavium keystore aliases: \\n" + stringBuilder.toString());
 
-        Key privateKey = ks.getKey(hsmKeyLabel, null);
-        if (!(privateKey instanceof PrivateKey)) {
-            throw new Exception("failed to fetch PrivateKey for "+hsmKeyLabel);
-        }
-        Key publicKey = ks.getKey(hsmKeyLabel+":public", null);
+        Key publicKey = ks.getKey(hsmKeyLabel + LABEL_PUBLIC_SUFFIX, null);
         if (!(publicKey instanceof PublicKey)) {
             System.out.println("String repr of public key: " + publicKey.toString());
             System.out.println("Public key type: " + publicKey.getClass());
             throw new Exception("failed to fetch PublicKey for "+hsmKeyLabel+"public");
         }
+
+        Key privateKey = ks.getKey(hsmKeyLabel, null);
+        if (!(privateKey instanceof PrivateKey)) {
+            throw new Exception("failed to fetch PrivateKey for "+hsmKeyLabel);
+        }
+
         KeyPair kp = new KeyPair((PublicKey) publicKey, (PrivateKey) privateKey);
         System.out.println(toPEMFormat("PUBLIC KEY", publicKey.getEncoded()));
         return null;
