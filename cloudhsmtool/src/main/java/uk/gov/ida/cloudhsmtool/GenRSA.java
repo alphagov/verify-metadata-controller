@@ -13,6 +13,7 @@ import java.security.PublicKey;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PublicKey;
+import java.util.Iterator;
 import java.util.concurrent.Callable;
 
 @CommandLine.Command(
@@ -27,10 +28,18 @@ public class GenRSA extends HSMCli implements Callable<Void> {
         KeyStore ks = getKeystore();
         String hsmKeyLabel = getHsmKeyLabel();
         if (!ks.containsAlias(hsmKeyLabel)) {
+            System.out.println("Alias not found in keyStore, generating new RSA KeyPair");
             generateRSAKeyPair(DEFAULT_KEY_SIZE, hsmKeyLabel);
         }
 
         ks.load(null, null);
+
+        Iterator<String> stringIterator = ks.aliases().asIterator();
+        StringBuilder stringBuilder = new StringBuilder();
+        while (stringIterator.hasNext()) {
+            stringBuilder.append(stringIterator.next()).append("\\n");
+        }
+        System.out.println("Cavium keystore aliases: \\n" + stringBuilder.toString());
 
         Key privateKey = ks.getKey(hsmKeyLabel, null);
         if (!(privateKey instanceof PrivateKey)) {
@@ -38,6 +47,8 @@ public class GenRSA extends HSMCli implements Callable<Void> {
         }
         Key publicKey = ks.getKey(hsmKeyLabel+":public", null);
         if (!(publicKey instanceof PublicKey)) {
+            System.out.println("String repr of public key: " + publicKey.toString());
+            System.out.println("Public key type: " + publicKey.getClass());
             throw new Exception("failed to fetch PublicKey for "+hsmKeyLabel+"public");
         }
         KeyPair kp = new KeyPair((PublicKey) publicKey, (PrivateKey) privateKey);
