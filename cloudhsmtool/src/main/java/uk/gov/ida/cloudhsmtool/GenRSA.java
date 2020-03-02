@@ -34,12 +34,15 @@ public class GenRSA extends HSMCli implements Callable<Void> {
 
         ks.load(null, null);
 
+        System.out.println("Cavium keystore aliases:");
+
         Iterator<String> stringIterator = ks.aliases().asIterator();
-        StringBuilder stringBuilder = new StringBuilder();
         while (stringIterator.hasNext()) {
-            stringBuilder.append(stringIterator.next()).append("\\n");
+            String alias = stringIterator.next();
+            System.out.println(alias);
+            System.out.println("KeyStore contains alias: " + ks.containsAlias(alias));
+            System.out.println("\\n");
         }
-        System.out.println("Cavium keystore aliases: \\n" + stringBuilder.toString());
 
 
         System.out.println("Public label we're using: " + hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
