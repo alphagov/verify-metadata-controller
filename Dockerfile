@@ -13,7 +13,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager github.com/alph
 FROM amazonlinux:2.0.20190212
 
 # Install AWS CloudHSM client and libs
-ENV CLOUDHSM_CLIENT_VERSION=3.0.0-2.el7
+ENV CLOUDHSM_CLIENT_VERSION=2.0.4-1.el7
 RUN yum install -y wget tar gzip openssl \
  && wget --progress=bar:force https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-${CLOUDHSM_CLIENT_VERSION}.x86_64.rpm \
  && yum install -y ./cloudhsm-client-*.rpm \
