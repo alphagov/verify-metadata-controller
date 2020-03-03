@@ -29,7 +29,7 @@ dependencies {
     'org.yaml:snakeyaml:1.24-SNAPSHOT'
 
     if (project.hasProperty('cloudhsm')) {
-      implementation name: 'cloudhsm-2.0.4'
+      implementation name: 'cloudhsm-3.0.0'
       implementation name: 'log4j-api-2.8'
       implementation name: 'log4j-core-2.8'
     }
