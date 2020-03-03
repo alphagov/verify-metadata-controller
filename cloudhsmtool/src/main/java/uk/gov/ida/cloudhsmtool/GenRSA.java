@@ -44,6 +44,14 @@ public class GenRSA extends HSMCli implements Callable<Void> {
             System.out.println("\\n");
         }
 
+        try {
+            com.cavium.key.CaviumKey publicCaviumKey = com.cavium.cfm2.Util.findFirstCaviumKey(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
+            System.out.println("publicCaviumKey found! " + publicCaviumKey.getLabel());
+
+        } catch (Exception e) {
+            System.out.println("Public Cavium Key not found: " + e.getMessage());
+        }
+
 
         System.out.println("Public label we're using: " + hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
 
