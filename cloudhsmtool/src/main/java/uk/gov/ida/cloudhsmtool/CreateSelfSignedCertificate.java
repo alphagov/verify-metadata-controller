@@ -67,7 +67,7 @@ public class CreateSelfSignedCertificate extends HSMCli implements Callable<Void
         if (!(privateKey instanceof PrivateKey)) {
             throw new Exception("failed to fetch PrivateKey for " + hsmKeyLabel);
         }
-        Key publicKey = ks.getKey(hsmKeyLabel + LABEL_PUBLIC_SUFFIX, null);
+        com.cavium.key.CaviumKey publicKey = com.cavium.cfm2.Util.findFirstCaviumKey(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
         if (!(publicKey instanceof PublicKey)) {
             throw new Exception("failed to fetch PublicKey for " + hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
         }
