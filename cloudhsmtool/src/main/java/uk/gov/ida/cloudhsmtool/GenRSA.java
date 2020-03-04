@@ -12,7 +12,6 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
-import java.security.PublicKey;
 import java.util.concurrent.Callable;
 
 @CommandLine.Command(
@@ -36,7 +35,7 @@ public class GenRSA extends HSMCli implements Callable<Void> {
         if (!(privateKey instanceof PrivateKey)) {
             throw new Exception("failed to fetch PrivateKey for "+hsmKeyLabel);
         }
-        Key publicKey = ks.getKey(hsmKeyLabel+":public", null);
+        com.cavium.key.CaviumKey publicKey = com.cavium.cfm2.Util.findFirstCaviumKey(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
         if (!(publicKey instanceof PublicKey)) {
             throw new Exception("failed to fetch PublicKey for "+hsmKeyLabel+"public");
         }
