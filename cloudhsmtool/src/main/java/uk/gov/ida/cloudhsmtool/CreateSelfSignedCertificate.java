@@ -99,7 +99,7 @@ public class CreateSelfSignedCertificate extends HSMCli implements Callable<Void
         certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.keyCertSign));
         certBuilder.addExtension(Extension.basicConstraints, true, new BasicConstraints(true));
 
-        ContentSigner signer = new CaviumRSAContentSigner(keyPair.getPrivate(), SIGNING_ALGO_SHA256_RSA);
+        ContentSigner signer = new CaviumRSAContentSigner(keyPair.getPrivate(), SIGNING_ALGO_RSASSA_PSS);
 
         return buildX509Certificate(certBuilder, signer);
     }

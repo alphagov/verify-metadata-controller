@@ -77,7 +77,7 @@ public class CreateChainedCertificate extends CreateSelfSignedCertificate implem
             certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature));
         }
 
-        ContentSigner signer = new CaviumRSAContentSigner((PrivateKey) parentKey, SIGNING_ALGO_SHA256_RSA);
+        ContentSigner signer = new CaviumRSAContentSigner((PrivateKey) parentKey, SIGNING_ALGO_RSASSA_PSS);
 
         return buildX509Certificate(certBuilder, signer);
     }
