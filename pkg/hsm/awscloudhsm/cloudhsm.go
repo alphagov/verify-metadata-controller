@@ -157,7 +157,7 @@ func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (s
 		specFileName,
 		tmpMetadataSigningCertPath,
 		"--output", tmpMetadataOutputPath,
-		"--algorithm", "rsa",
+		"--algorithm", "rsapss",
 		"--hsm-metadata-signing-key-label", request.MetadataSigningKeyLabel,
 		"--hsm-saml-signing-key-label", request.SamlSigningKeyLabel,
 		samlSigningOption, tmpSAMLSigningCertPath,
