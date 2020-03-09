@@ -99,7 +99,7 @@ public class MetadataGenerator implements Callable<Void> {
     private File outputFile;
 
     @CommandLine.Option(names = "--algorithm", description = "Signing algorithm")
-    private SigningAlgoType signingAlgo = SigningAlgoType.rsa;
+    private SigningAlgoType signingAlgo = SigningAlgoType.rsapss;
 
     @CommandLine.Option(names = "--hsm-saml-signing-key-label", description = "HSM Signing key label (required for self-signed SAML Signing cert from HSM)")
     private String hsmSamlSigningKeyLabel;
