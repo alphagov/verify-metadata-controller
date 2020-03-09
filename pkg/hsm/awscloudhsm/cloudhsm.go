@@ -139,6 +139,8 @@ func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (s
 	log.Info("mdgen",
 		"type", request.Type,
 		"input", specFileName,
+		"metadataSigningCertFile", tmpMetadataSigningCertPath,
+		"samlSigningCertFile", tmpSAMLSigningCertPath,
 		"output", tmpMetadataOutputPath,
 		"metadataSigningKeyLabel", request.MetadataSigningKeyLabel,
 		"samlSigningKeyLabel", request.SamlSigningKeyLabel,
