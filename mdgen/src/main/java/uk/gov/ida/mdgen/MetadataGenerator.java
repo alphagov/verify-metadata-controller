@@ -170,7 +170,7 @@ public class MetadataGenerator implements Callable<Void> {
 
     private void setupSigningAlgo() {
         if (signingAlgo == SigningAlgoType.rsapss) {
-            Security.addProvider(new BouncyCastleProvider());
+            Security.insertProviderAt(new BouncyCastleProvider(), 1); // 1-based
         }
         if (metadataSigningCredential.getPublicKey() instanceof ECPublicKey) {
             LOG.warn("Credential public key is of EC type, using ECDSA signing algorithm");
