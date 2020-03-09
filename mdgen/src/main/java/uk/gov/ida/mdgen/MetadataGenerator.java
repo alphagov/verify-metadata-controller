@@ -52,7 +52,6 @@ import java.security.Security;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.ECPublicKey;
-import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
@@ -139,10 +138,20 @@ public class MetadataGenerator implements Callable<Void> {
         setSecurityProvider();
         setupMetadataSigningCredential();
         setupSigningAlgo();
+        logSecurityProviders();
         setupKeyInfoGeneratorFactory();
         EntityDescriptor entityDescriptor = buildEntityDescriptor();
         XMLObjectSupport.marshallToOutputStream(entityDescriptor, getOutputStream());
         return null;
+    }
+
+    private void logSecurityProviders() {
+        LOG.info("Providers installed on your system:");
+        Provider[] providerList = Security.getProviders();
+        for (int i = 0; i < providerList.length; i++) {
+            LOG.info("[" + (i + 1) + "] - Provider name: " + providerList[i].getName());
+            LOG.info("Provider information:\n" + providerList[i].getInfo());
+        }
     }
 
     private OutputStream getOutputStream() throws FileNotFoundException {
