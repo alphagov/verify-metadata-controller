@@ -63,7 +63,7 @@ Note: Access to the Sandbox environments CloudHSM is only possible from a GDS IP
 1. Configure CloudHSM Client:
     ```
     apt-get install dnsutils -y
-    /opt/cloudhsm/bin/configure -a $(dig +short a88bb4c07943b11e9bbf30ae9bf7a1ac-aa921f50a00f6c2a.elb.eu-west-2.amazonaws.com)
+    /opt/cloudhsm/bin/configure -a $(dig +short afe8ce8bf61fb11eaa69a0af1fbe14c4-afb9ba656e22f14e.elb.eu-west-2.amazonaws.com | head -n 1)
     ```
 1. Test the connection by listing users:
     ```
