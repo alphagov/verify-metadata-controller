@@ -5,7 +5,6 @@ import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.KeyUsage;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
-import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
 import picocli.CommandLine;
@@ -16,7 +15,6 @@ import java.io.StringReader;
 import java.math.BigInteger;
 import java.security.Key;
 import java.security.KeyPair;
-import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
@@ -43,12 +41,6 @@ public class CreateChainedCertificate extends CreateSelfSignedCertificate implem
     protected String parentKeyLabel;
 
     @Override
-    public Void call() throws Exception {
-        super.call();
-        return null;
-    }
-
-    @Override
     X509Certificate generateCertificate(KeyPair keyPair) throws Exception {
 
         X509Certificate parentCert = getParentCertificate(parentCertBase64);
@@ -64,8 +56,7 @@ public class CreateChainedCertificate extends CreateSelfSignedCertificate implem
                 buildSubject(),
                 keyPair.getPublic());
 
-        KeyStore ks = getKeystore();
-        Key parentKey = ks.getKey(this.parentKeyLabel, null);
+        Key parentKey = cloudHSMWrapper.getPrivateKey(this.parentKeyLabel);
         if (!(parentKey instanceof PrivateKey)) {
             throw new Exception("failed to fetch PrivateKey for parent key " + this.parentKeyLabel);
         }
@@ -77,9 +68,7 @@ public class CreateChainedCertificate extends CreateSelfSignedCertificate implem
             certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature));
         }
 
-        ContentSigner signer = new CaviumRSAContentSigner((PrivateKey) parentKey, SIGNING_ALGO_SHA256_RSA);
-
-        return buildX509Certificate(certBuilder, signer);
+        return buildX509Certificate(certBuilder, (PrivateKey) parentKey);
     }
 
     private X509Certificate getParentCertificate(String pemString) throws CertificateException, IOException {

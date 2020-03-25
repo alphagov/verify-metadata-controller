@@ -32,7 +32,7 @@ COPY gradlew /cloudhsmtool/gradlew
 COPY settings.gradle /cloudhsmtool/settings.gradle
 COPY build.gradle /cloudhsmtool/build.gradle
 COPY ./gradle /cloudhsmtool/gradle
-COPY ./gradle.properties /cloudhsmtool/gradle.properties
+COPY ./gradle.docker.properties /cloudhsmtool/gradle.properties
 
 COPY script.bash /script.bash
 RUN chmod +x /script.bash
