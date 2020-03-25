@@ -57,9 +57,6 @@ public class CreateChainedCertificate extends CreateSelfSignedCertificate implem
                 keyPair.getPublic());
 
         Key parentKey = cloudHSMWrapper.getPrivateKey(this.parentKeyLabel);
-        if (!(parentKey instanceof PrivateKey)) {
-            throw new Exception("failed to fetch PrivateKey for parent key " + this.parentKeyLabel);
-        }
 
         if (certAuthority) {
             certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.keyCertSign));
