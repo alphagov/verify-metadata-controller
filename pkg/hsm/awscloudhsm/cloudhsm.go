@@ -20,11 +20,11 @@ type Client struct{}
 
 func (c *Client) CreateRSAKeyPair(label string, hsmCreds hsm.Credentials) ([]byte, error) {
 	log.Info("cloudhsmtool",
-		"command", "genrsa",
+		"command", "genkeypair",
 		"label", label,
 	)
 	cmd := exec.Command("/cloudhsmtool/build/install/cloudhsmtool/bin/cloudhsmtool",
-		"genrsa", label,
+		"genkeypair", label,
 	)
 	cmd.Stderr = nil // when nil stderr output is captured in err from Output
 	cmd.Env = append(os.Environ(),
@@ -45,11 +45,12 @@ func (c *Client) FindOrCreateRSAKeyPair(label string, hsmCreds hsm.Credentials) 
 
 func (c *Client) CreateSelfSignedCert(label string, hsmCreds hsm.Credentials, req hsm.CertRequest) ([]byte, error) {
 	log.Info("cloudhsmtool",
-		"command", "genrsa",
+		"command", "create-self-signed-cert",
 		"label", label,
 	)
 	args := []string{
-		"create-self-signed-cert", label,
+		"create-self-signed-cert",
+		label,
 		"-C", req.CountryCode,
 		"-CN", req.CommonName,
 		"-expiry", fmt.Sprintf("%d", req.ExpiryMonths),
@@ -73,7 +74,7 @@ func (c *Client) CreateSelfSignedCert(label string, hsmCreds hsm.Credentials, re
 
 func (c *Client) CreateChainedCert(label string, hsmCreds hsm.Credentials, req hsm.CertRequest) ([]byte, error) {
 	log.Info("cloudhsmtool",
-		"command", "genrsa",
+		"command", "create-chained-cert",
 		"label", label,
 	)
 	args := []string{

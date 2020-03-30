@@ -10,15 +10,15 @@ import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
 import java.security.Signature;
 
-import static uk.gov.ida.cloudhsmtool.HSMCli.PROVIDER_NAME_CAVIUM;
+import static uk.gov.ida.cloudhsmtool.CloudHSMWrapper.PROVIDER_NAME_CAVIUM;
 
-public class CaviumRSAContentSigner implements ContentSigner {
+public class CaviumContentSigner implements ContentSigner {
 
     private AlgorithmIdentifier algorithmIdentifier;
     private Signature sig;
     private ByteArrayOutputStream outputStream;
 
-    public CaviumRSAContentSigner(PrivateKey privateKey, String sigAlgo) {
+    CaviumContentSigner(PrivateKey privateKey, String sigAlgo) {
         this.algorithmIdentifier = new DefaultSignatureAlgorithmIdentifierFinder().find(sigAlgo);
 
         try {

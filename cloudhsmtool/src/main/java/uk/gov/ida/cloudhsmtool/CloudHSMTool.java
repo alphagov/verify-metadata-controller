@@ -8,7 +8,7 @@ import java.security.Security;
 import java.util.concurrent.Callable;
 
 @CommandLine.Command(subcommands = {
-	GenRSA.class,
+	GenKeyPair.class,
 	CreateSelfSignedCertificate.class,
 	CreateChainedCertificate.class,
 })

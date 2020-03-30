@@ -14,11 +14,8 @@ import picocli.CommandLine;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigInteger;
-import java.security.Key;
 import java.security.KeyPair;
-import java.security.KeyStore;
 import java.security.PrivateKey;
-import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
@@ -55,25 +52,15 @@ public class CreateSelfSignedCertificate extends HSMCli implements Callable<Void
     @Override
     public Void call() throws Exception {
 
-        KeyStore ks = getKeystore();
-        String hsmKeyLabel = getHsmKeyLabel();
-        if (!ks.containsAlias(hsmKeyLabel)) {
-            System.err.println("Could not find keystore entry for alias " + hsmKeyLabel);
-            System.exit(1);
+        final String hsmKeyLabel = getHsmKeyLabel();
+        if (!cloudHSMWrapper.containsAlias(hsmKeyLabel)) {
+            throw new IllegalStateException("Could not find keystore entry for alias " + hsmKeyLabel);
         }
 
-        ks.load(null, null);
-        Key privateKey = ks.getKey(hsmKeyLabel, null);
-        if (!(privateKey instanceof PrivateKey)) {
-            throw new Exception("failed to fetch PrivateKey for " + hsmKeyLabel);
-        }
-        com.cavium.key.CaviumKey publicKey = com.cavium.cfm2.Util.findFirstCaviumKey(hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
-        if (!(publicKey instanceof PublicKey)) {
-            throw new Exception("failed to fetch PublicKey for " + hsmKeyLabel + LABEL_PUBLIC_SUFFIX);
-        }
-        KeyPair kp = new KeyPair((PublicKey) publicKey, (PrivateKey) privateKey);
+        KeyPair kp = cloudHSMWrapper.getKeyPair(hsmKeyLabel);
         X509Certificate cert = generateCertificate(kp);
         System.out.println(toPEMFormat("CERTIFICATE", cert.getEncoded()));
+
         return null;
     }
 
@@ -99,12 +86,11 @@ public class CreateSelfSignedCertificate extends HSMCli implements Callable<Void
         certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.keyCertSign));
         certBuilder.addExtension(Extension.basicConstraints, true, new BasicConstraints(true));
 
-        ContentSigner signer = new CaviumRSAContentSigner(keyPair.getPrivate(), SIGNING_ALGO_SHA256_RSA);
-
-        return buildX509Certificate(certBuilder, signer);
+        return buildX509Certificate(certBuilder, keyPair.getPrivate());
     }
 
-    X509Certificate buildX509Certificate(X509v3CertificateBuilder certBuilder, ContentSigner signer) throws IOException, CertificateException {
+    X509Certificate buildX509Certificate(X509v3CertificateBuilder certBuilder, PrivateKey privateKey) throws IOException, CertificateException {
+        ContentSigner signer = cloudHSMWrapper.getContentSigner(privateKey);
         byte[] cert = certBuilder.build(signer).getEncoded();
         ByteArrayInputStream certStream = new ByteArrayInputStream(cert);
         return (X509Certificate) CertificateFactory
