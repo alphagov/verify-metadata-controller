@@ -1,0 +1,20 @@
+---
+apiVersion: verify.gov.uk/v1beta1
+kind: CertificateRequest
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/part-of: eidas-pki
+  name: verify-root-ca-test-a2
+  namespace: {{ .Release.Namespace }}
+spec:
+  countryCode: GB
+  commonName: Verify Test Root CA A2
+  expiryMonths: 120
+  organization: Cabinet Office
+  organizationUnit: GDS
+  location: London
+  CACert: true
