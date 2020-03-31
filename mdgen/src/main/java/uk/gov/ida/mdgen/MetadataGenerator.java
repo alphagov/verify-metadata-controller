@@ -69,7 +69,7 @@ public class MetadataGenerator implements Callable<Void> {
 
     enum SigningAlgoType {
         rsa(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA256),
-        rsapss(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA256_MGF1),
+        rsapss(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA384_MGF1),
         ecdsa(XMLSignature.ALGO_ID_SIGNATURE_ECDSA_SHA384);
 
         private final String uri;

@@ -44,7 +44,7 @@ public class MetadataGeneratorTest extends MdgenTestUtils {
         );
 
         EntityDescriptor entityDescriptor = (EntityDescriptor) XMLObjectSupport.unmarshallFromInputStream(getParserPool(), getFileFromPath(metadata));
-        assertThat(entityDescriptor.getSignature().getSignatureAlgorithm()).isEqualTo(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA256_MGF1);
+        assertThat(entityDescriptor.getSignature().getSignatureAlgorithm()).isEqualTo(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA384_MGF1);
     }
 
     @Test
