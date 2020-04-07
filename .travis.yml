@@ -4,7 +4,6 @@ jdk:
   - openjdk11
 
 script:
-  - cd cloudhsmtool
   - ./gradlew --no-daemon test
 
 before_cache:
