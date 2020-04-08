@@ -12,7 +12,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   countryCode: GB
-  commonName: Verify Test Root CA A1
+  commonName: GOV.UK Verify Test Root CA A1
   expiryMonths: 120
   organization: Cabinet Office
   organizationUnit: GDS

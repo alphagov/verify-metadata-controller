@@ -23,7 +23,7 @@ func (c *Client) CreateRSAKeyPair(label string, hsmCreds hsm.Credentials) ([]byt
 		"command", "genkeypair",
 		"label", label,
 	)
-	cmd := exec.Command("/cloudhsmtool/build/install/cloudhsmtool/bin/cloudhsmtool",
+	cmd := exec.Command("/cloudhsmtool/bin/cloudhsmtool",
 		"genkeypair", label,
 	)
 	cmd.Stderr = nil // when nil stderr output is captured in err from Output
@@ -58,7 +58,7 @@ func (c *Client) CreateSelfSignedCert(label string, hsmCreds hsm.Credentials, re
 		"-O", req.Organization,
 		"-OU", req.OrganizationUnit,
 	}
-	cmd := exec.Command("/cloudhsmtool/build/install/cloudhsmtool/bin/cloudhsmtool", args...)
+	cmd := exec.Command("/cloudhsmtool/bin/cloudhsmtool", args...)
 	cmd.Stderr = nil // when nil stderr output is captured in err from Output
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("HSM_USER=%s", hsmCreds.User),
@@ -91,7 +91,7 @@ func (c *Client) CreateChainedCert(label string, hsmCreds hsm.Credentials, req h
 	if req.CACert {
 		args = append(args, "-ca-cert")
 	}
-	cmd := exec.Command("/cloudhsmtool/build/install/cloudhsmtool/bin/cloudhsmtool", args...)
+	cmd := exec.Command("/cloudhsmtool/bin/cloudhsmtool", args...)
 	cmd.Stderr = nil // when nil stderr output is captured in err from Output
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("HSM_USER=%s", hsmCreds.User),
@@ -153,7 +153,7 @@ func (c *Client) GenerateAndSignMetadata(request hsm.GenerateMetadataRequest) (s
 		samlSigningOption = "--supplied-saml-signing-cert-file"
 	}
 
-	cmd := exec.Command("/mdgen/build/install/mdgen/bin/mdgen",
+	cmd := exec.Command("/mdgen/bin/mdgen",
 		request.Type,
 		specFileName,
 		tmpMetadataSigningCertPath,

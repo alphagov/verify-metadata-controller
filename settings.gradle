@@ -1,0 +1,3 @@
+rootProject.name = 'verify-metadata-controller'
+include 'cloudhsmtool'
+include 'mdgen'

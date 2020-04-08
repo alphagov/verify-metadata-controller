@@ -36,7 +36,6 @@ public class CreateSelfSignedCertificateTest extends HSMTestUtils {
 
     @Test
     public void shouldThrowExceptionCreatingSignedCertificateWithoutKeysInHSM() throws Exception {
-        ByteArrayOutputStream out = captureSystemOut();
         when(cloudHSMWrapper.containsAlias(HSM_KEY_ALIAS)).thenReturn(false);
         CreateSelfSignedCertificate selfSigned = createSelfSignedCertificate(cloudHSMWrapper);
         Assertions.assertThrows(CommandLine.ExecutionException.class, () -> CommandLine.call(selfSigned, HSM_KEY_ALIAS, "-CN", "foo"));

@@ -1,45 +1,13 @@
-plugins {
-  id 'application'
-}
-
+apply plugin: 'application'
 mainClassName = 'uk.gov.ida.mdgen.MetadataGenerator'
 
-repositories {
-  mavenCentral()
-  maven { url 'http://oss.sonatype.org/content/groups/public/' }
-  maven { url 'https://build.shibboleth.net/nexus/content/repositories/releases' }
-
-  // cloudhsm libraries downloaded from AWS
-  flatDir {
-    dirs '/opt/cloudhsm/java'
-  }
-}
-
 dependencies {
-  implementation 'info.picocli:picocli:4.0.1',
-    'org.opensaml:opensaml-core:3.4.0',
-    'org.opensaml:opensaml-saml-api:3.4.0',
-    'org.opensaml:opensaml-saml-impl:3.4.0',
-    'org.opensaml:opensaml-xmlsec-api:3.4.0',
-    'org.opensaml:opensaml-xmlsec-impl:3.4.0',
-    'org.bouncycastle:bcprov-jdk15on:1.60',
-    'org.slf4j:slf4j-simple:1.7.25',
-    'se.litsec.opensaml:opensaml3-ext:1.2.2',
-    'com.github.spullara.mustache.java:compiler:0.9.6',
-    'org.yaml:snakeyaml:1.26'
-
-    if (project.hasProperty('cloudhsm')) {
-      implementation name: 'cloudhsm-3.0.0'
-      implementation name: 'log4j-api-2.8'
-      implementation name: 'log4j-core-2.8'
-    }
-
-  testCompile 'org.assertj:assertj-core:3.9.1',
-    'junit:junit:4.12'
-
-}
-
-task runDockerTests(dependsOn: build, type: Exec) {
-    workingDir "$projectDir/docker"
-    commandLine './launch-docker.bash'
+    implementation(
+            configurations.common,
+            configurations.mdgen,
+            project(':cloudhsmtool')
+    )
+    testImplementation(
+            configurations.testing
+    )
 }

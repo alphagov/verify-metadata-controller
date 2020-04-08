@@ -26,4 +26,6 @@ vendor/github.com/alphagov/
 
 build/
 cloudhsmtool/.gradle/
+mdgen/.gradle/
+.gradle/
 cloudhsmtool/out/

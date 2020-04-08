@@ -2,21 +2,21 @@
 
 A CLI application that performs the follows functions on AWS CloudHSM:
 
-* generate a non-extractable private key and a corresponding public key in the CloudHSM Keystore using `cloudhsmtool genrsa`.
+* generate a non-extractable private key and a corresponding public key in the CloudHSM Keystore using `cloudhsmtool genkeypair`.
 * produce a self-signed X509 certificate from a public and private key in the CloudHSM Keystore, using `cloudhsmtool create-self-signed-cert`.
 * produce a X509 certificate signed by another private key in the CloudHSM Keystore, using `cloudhsmtool create-chained-cert`.
 
-### genrsa
+### genkeypair
 This is a CLI to generate non-extractable Keys in the CloudHSM Keystore
 
 Usage:
 ````
-cloudhsmtool genrsa <a-key-label>
+cloudhsmtool genkeypair <a-key-label>
 ````
 Generates a private key and a public key as separate entries in the CloudHSM Keystore.
 
 For example. the entries in CloudHSM Keystore for the command
-`cloudhsmtool genrsa foo` would be:
+`cloudhsmtool genkeypair foo` would be:
 
 | Keystore Label | Keystore Entry |
 |----------------|----------------|
@@ -73,7 +73,7 @@ This CLI emits a PEM-encoded X509 Certificate to `stdout`.
 | -CN                 | Common Name                             | true     |                |
 | -expiry             | Duration of certificate in months       | false    | 12             |
 | -parent-cert-base64 | PEM encoded parent certificate, only for chained cert          | true     |                |
-| -parent-key-label   | key label of parent RSA key, only for chained cert             | true     |                |
+| -parent-key-label   | key label of parent key, only for chained cert             | true     |                |
 | -ca-cert            | Describes this certificate as a CA cert, only for chained cert | false    | false          |
 
 ## Running cloudhsmtool using docker

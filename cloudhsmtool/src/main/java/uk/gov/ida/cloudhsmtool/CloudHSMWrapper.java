@@ -2,9 +2,11 @@ package uk.gov.ida.cloudhsmtool;
 
 import com.cavium.cfm2.CFM2Exception;
 import com.cavium.key.CaviumRSAPrivateKey;
+import org.apache.xml.security.algorithms.JCEMapper;
 import org.bouncycastle.operator.ContentSigner;
 
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.security.GeneralSecurityException;
 import java.security.Key;
 import java.security.KeyPair;
@@ -13,7 +15,9 @@ import java.security.KeyStore;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.PublicKey;
+import java.security.Security;
 
 public class CloudHSMWrapper {
 
@@ -61,6 +65,15 @@ public class CloudHSMWrapper {
             sigAlgo = SIGNING_ALGO_SHA256_RSA;
         }
         return new CaviumContentSigner(privateKey, sigAlgo);
+    }
+
+    public void setSecurityProvider() throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, ClassNotFoundException {
+        Provider caviumProvider = (Provider) ClassLoader.getSystemClassLoader()
+                .loadClass("com.cavium.provider.CaviumProvider")
+                .getConstructor()
+                .newInstance();
+        Security.addProvider(caviumProvider);
+        JCEMapper.setProviderId("Cavium");
     }
 
     private KeyStore getKeystore() throws GeneralSecurityException, IOException {

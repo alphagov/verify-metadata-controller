@@ -2,7 +2,6 @@ package uk.gov.ida.mdgen;
 
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
-import org.apache.xml.security.algorithms.JCEMapper;
 import org.apache.xml.security.signature.XMLSignature;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.joda.time.DateTime;
@@ -34,6 +33,7 @@ import org.yaml.snakeyaml.Yaml;
 import picocli.CommandLine;
 import picocli.CommandLine.ArgGroup;
 import se.litsec.opensaml.utils.ObjectUtils;
+import uk.gov.ida.cloudhsmtool.CloudHSMWrapper;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -42,18 +42,14 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.io.StringWriter;
-import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.KeyStore;
 import java.security.PrivateKey;
-import java.security.Provider;
 import java.security.Security;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.ECPublicKey;
-import java.util.Enumeration;
-import java.util.Iterator;
+import java.security.interfaces.RSAPublicKey;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -62,7 +58,7 @@ import java.util.concurrent.Callable;
 import static uk.gov.ida.mdgen.MetadataGenerator.NodeType.connector;
 
 public class MetadataGenerator implements Callable<Void> {
-    private static final String RFC1123Z_FORMAT_PATTERN = "EEE, dd MMM yyyy H:m:s Z";
+    protected static final String RFC1123Z_FORMAT_PATTERN = "EEE, dd MMM yyyy H:m:s Z";
     private final Logger LOG = LoggerFactory.getLogger(MetadataGenerator.class);
     private final Yaml yaml = new Yaml();
     private BasicX509Credential samlSigningCredential;
@@ -73,8 +69,8 @@ public class MetadataGenerator implements Callable<Void> {
 
     enum SigningAlgoType {
         rsa(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA256),
-        rsapss(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA256_MGF1),
-        ecdsa(XMLSignature.ALGO_ID_SIGNATURE_ECDSA_SHA256);
+        rsapss(XMLSignature.ALGO_ID_SIGNATURE_RSA_SHA384_MGF1),
+        ecdsa(XMLSignature.ALGO_ID_SIGNATURE_ECDSA_SHA384);
 
         private final String uri;
 
@@ -99,7 +95,7 @@ public class MetadataGenerator implements Callable<Void> {
     private File outputFile;
 
     @CommandLine.Option(names = "--algorithm", description = "Signing algorithm")
-    private SigningAlgoType signingAlgo = SigningAlgoType.rsa;
+    private SigningAlgoType signingAlgo = SigningAlgoType.ecdsa;
 
     @CommandLine.Option(names = "--hsm-saml-signing-key-label", description = "HSM Signing key label (required for self-signed SAML Signing cert from HSM)")
     private String hsmSamlSigningKeyLabel;
@@ -127,6 +123,7 @@ public class MetadataGenerator implements Callable<Void> {
     @CommandLine.Option(names = "--validityTimestamp", description = "Expiry timestamp for metadata using RFC1123Z, e.g \"Mon, 02 Jan 2006 15:04:05 +0000\"")
     private String validityTimestamp;
 
+    private CloudHSMWrapper cloudHSMWrapper = new CloudHSMWrapper();
 
     public static void main(String[] args) throws InitializationException {
         InitializationService.initialize();
@@ -136,7 +133,7 @@ public class MetadataGenerator implements Callable<Void> {
 
     @Override
     public Void call() throws Exception {
-        setSecurityProvider();
+        cloudHSMWrapper.setSecurityProvider();
         setupMetadataSigningCredential();
         setupSigningAlgo();
         setupKeyInfoGeneratorFactory();
@@ -169,12 +166,14 @@ public class MetadataGenerator implements Callable<Void> {
     }
 
     private void setupSigningAlgo() {
-        if (signingAlgo == SigningAlgoType.rsapss) {
+        if (metadataSigningCredential.getPublicKey() instanceof RSAPublicKey) {
             Security.addProvider(new BouncyCastleProvider());
-        }
-        if (metadataSigningCredential.getPublicKey() instanceof ECPublicKey) {
-            LOG.warn("Credential public key is of EC type, using ECDSA signing algorithm");
+            signingAlgo = SigningAlgoType.rsapss;
+
+        } else if (metadataSigningCredential.getPublicKey() instanceof ECPublicKey) {
             signingAlgo = SigningAlgoType.ecdsa;
+        } else {
+            throw new IllegalStateException("Cannot determine signing algorithm to use");
         }
     }
 
@@ -184,26 +183,8 @@ public class MetadataGenerator implements Callable<Void> {
     }
 
     private BasicX509Credential getSigningCredentialFromCloudHSM(X509Certificate cert, String label) throws Exception {
-        KeyStore cloudHsmStore = KeyStore.getInstance("Cavium");
-        cloudHsmStore.load(null, null);
-        Iterator<String> stringIterator = cloudHsmStore.aliases().asIterator();
-        StringBuilder stringBuilder = new StringBuilder();
-        while (stringIterator.hasNext()) {
-            stringBuilder.append(stringIterator.next()).append("\\n");
-        }
-        LOG.info("Cavium keystore aliases: \\n" + stringBuilder.toString());
-
-        PrivateKey key = (PrivateKey) cloudHsmStore.getKey(label, null);
+        PrivateKey key = cloudHSMWrapper.getPrivateKey(label);
         return new BasicX509Credential(cert, key);
-    }
-
-    private void setSecurityProvider() throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, ClassNotFoundException {
-        Provider caviumProvider = (Provider) ClassLoader.getSystemClassLoader()
-                .loadClass("com.cavium.provider.CaviumProvider")
-                .getConstructor()
-                .newInstance();
-        Security.addProvider(caviumProvider);
-        JCEMapper.setProviderId("Cavium");
     }
 
     private String renderTemplate(String template, Map values) {
