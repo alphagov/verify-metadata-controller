@@ -40,12 +40,10 @@ COPY settings.gradle ./settings.gradle
 COPY gradle ./gradle
 
 COPY mdgen/build.gradle                 ./mdgen/build.gradle
-COPY mdgen/settings.gradle              ./mdgen/settings.gradle
 COPY mdgen/src                          ./mdgen/src
 COPY mdgen/test                         ./mdgen/test
 
 COPY cloudhsmtool/build.gradle         ./cloudhsmtool/build.gradle
-COPY cloudhsmtool/settings.gradle      ./cloudhsmtool/settings.gradle
 COPY cloudhsmtool/src                  ./cloudhsmtool/src
 
 RUN ./gradlew --console rich --parallel -Pcloudhsm --no-daemon
