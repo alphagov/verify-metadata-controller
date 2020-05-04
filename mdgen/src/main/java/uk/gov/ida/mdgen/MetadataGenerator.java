@@ -168,7 +168,7 @@ public class MetadataGenerator implements Callable<Void> {
     private void setupSigningAlgo() {
         if (metadataSigningCredential.getPublicKey() instanceof RSAPublicKey) {
             Security.addProvider(new BouncyCastleProvider());
-            signingAlgo = SigningAlgoType.rsapss;
+            signingAlgo = SigningAlgoType.rsa;
 
         } else if (metadataSigningCredential.getPublicKey() instanceof ECPublicKey) {
             signingAlgo = SigningAlgoType.ecdsa;
