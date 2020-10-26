@@ -24,6 +24,8 @@ spec:
       source:
         repository: ((concourse.task-toolbox-image))
         tag: ((concourse.task-toolbox-tag))
+        username: ((dockerhubpull-concourse.username))
+        password: ((dockerhubpull-concourse.password))
 
     image_tag: &image_tag
       tag_file: src/.git/short_ref
@@ -37,6 +39,8 @@ spec:
         type: registry-image
         source:
           repository: vito/oci-build-task
+          username: ((dockerhubpull-concourse.username))
+          password: ((dockerhubpull-concourse.password))
         version:
           digest: sha256:cfb2983956145f54a4996c2aff5fc598856c8722922a6e73f9ebfa3d9b3f9813
       caches:
@@ -51,6 +55,8 @@ spec:
       source:
         repository: ((concourse.github-resource-image))
         tag: ((concourse.github-resource-tag))
+        username: ((dockerhubpull-concourse.username))
+        password: ((dockerhubpull-concourse.password))
 
     resources:
 
@@ -273,6 +279,8 @@ spec:
             type: registry-image
             source:
               repository: vito/oci-build-task
+              username: ((dockerhubpull-concourse.username))
+              password: ((dockerhubpull-concourse.password))
             version:
               digest: sha256:cfb2983956145f54a4996c2aff5fc598856c8722922a6e73f9ebfa3d9b3f9813
           caches:
