@@ -22,6 +22,8 @@ spec:
         app.kubernetes.io/name: vmc
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      imagePullSecrets:
+      - name: dockerhubpull
       containers:
       - name: controller
         image: "{{ .Values.vmc.image.repository }}:{{ .Values.vmc.image.tag }}"
