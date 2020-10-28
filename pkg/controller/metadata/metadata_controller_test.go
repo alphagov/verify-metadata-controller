@@ -250,6 +250,8 @@ func TestReconcile(t *testing.T) {
 	g.Expect(deploymentResource.Spec.Selector.MatchLabels).To(Equal(expectedLabels))
 	g.Expect(deploymentResource.Spec.Template.Spec.Containers).To(HaveLen(1))
 	g.Expect(deploymentResource.Spec.Template.Spec.Containers[0].Image).To(Equal("nginx"))
+	g.Expect(deploymentResource.Spec.Template.Spec.ImagePullSecrets).To(HaveLen(1))
+	g.Expect(deploymentResource.Spec.Template.Spec.ImagePullSecrets[0].Name).To(Equal("dockerhubpull"))
 	g.Expect(deploymentResource.Spec.Template.ObjectMeta.Labels).To(Equal(expectedLabels))
 
 	// We expect a Service to be created in same namespace
