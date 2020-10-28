@@ -519,6 +519,11 @@ func (r *ReconcileMetadata) Reconcile(request reconcile.Request) (reconcile.Resu
 					Labels: metadataLabels,
 				},
 				Spec: corev1.PodSpec{
+					ImagePullSecrets: []corev1.LocalObjectReference{
+						{
+							Name: "dockerhubpull",
+						},
+					},
 					Containers: []corev1.Container{
 						{
 							Name:  "nginx",
