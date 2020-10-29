@@ -1,0 +1,141 @@
+---
+apiVersion: concourse.govsvc.uk/v1beta1
+kind: Pipeline
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: deploy
+spec:
+  exposed: true
+  config:
+
+    github_source: &github_source
+      uri: https://github.com/alphagov/verify-metadata-controller.git
+      organization: alphagov
+      owner: alphagov
+      repository: verify-metadata-controller
+      github_api_token: ((github.api-token))
+      access_token: ((github.api-token))
+      approvers: ((trusted-developers.github-accounts))
+      required_approval_count: 2
+
+    task_toolbox: &task_toolbox
+      type: docker-image
+      source:
+        repository: ((concourse.task-toolbox-image))
+        tag: ((concourse.task-toolbox-tag))
+
+    resource_types:
+
+    - name: github
+      type: registry-image
+      source:
+        repository: ((concourse.github-resource-image))
+        tag: ((concourse.github-resource-tag))
+
+    resources:
+
+    - name: release
+      type: registry-image
+      icon: tag
+      source:
+        username: ((pipeline.ImageRegistryUsername))
+        password: ((pipeline.ImageRegistryPassword))
+        repository: ((release.ImageRepositoryURI))
+
+    jobs:
+
+    - name: deploy
+      serial: true
+      plan:
+
+      - get: release
+        trigger: true
+
+      - task: extract-release
+        image: release
+        config:
+          platform: linux
+          outputs:
+          - name: release
+          run:
+            path: /bin/sh
+            args:
+            - -euc
+            - |
+              echo "Extracting chart package from the release image..."
+              cp -r /vmc-chart-package/* release/
+
+      - task: render-manifests
+        config:
+          platform: linux
+          image_resource: *task_toolbox
+          inputs:
+          - name: release
+          outputs:
+          - name: manifests
+          params:
+            CLUSTER_NAME: ((cluster.name))
+            CLUSTER_DOMAIN: ((cluster.domain))
+            RELEASE_NAME: v1
+            RELEASE_NAMESPACE: ((namespace-deployer.namespace))
+            CLUSTER_PUBLIC_KEY: ((artefact-signing-key.publicKey))
+            CLOUDHSM_IP: ((cluster.cloudHsmIp))
+          run:
+            path: /bin/bash
+            args:
+            - -eu
+            - -c
+            - |
+              echo "preparing keyring..."
+              echo "${CLUSTER_PUBLIC_KEY}" > key
+              gpg --import key
+              gpg --export > ~/.gnupg/pubring.gpg
+              echo "verifying package"
+              helm verify ./release/*.tgz
+              echo "rendering chart with release name '${RELEASE_NAME}' and namespace '${RELEASE_NAMESPACE}'..."
+              helm template \
+                --name "${RELEASE_NAME}" \
+                --namespace "${RELEASE_NAMESPACE}" \
+                --set "global.cluster.name=${CLUSTER_NAME}" \
+                --set "global.cluster.domain=${CLUSTER_DOMAIN}" \
+                --set "global.cloudHsm.ip=${CLOUDHSM_IP}" \
+                --set "vmc.secretName=vmc" \
+                --output-dir "./manifests/" \
+                ./release/*.tgz
+
+      - task: deploy-manifests
+        config:
+          platform: linux
+          image_resource: *task_toolbox
+          inputs:
+          - name: manifests
+          params:
+            KUBERNETES_SERVICE_ACCOUNT: ((namespace-deployer))
+            KUBERNETES_TOKEN: ((namespace-deployer.token))
+            KUBERNETES_API: kubernetes.default.svc
+            RELEASE_NAME: v1
+            RELEASE_NAMESPACE: ((namespace-deployer.namespace))
+            APP_NAME: metadata-controller
+          run:
+            path: /bin/bash
+            args:
+            - -eu
+            - -c
+            - |
+              echo "configuring kubectl"
+              echo "${KUBERNETES_SERVICE_ACCOUNT}" | jq -r .["ca.crt"] > ca.crt
+              kubectl config set-cluster self --server=https://kubernetes.default --certificate-authority=ca.crt
+              kubectl config set-credentials deployer --token "${KUBERNETES_TOKEN}"
+              kubectl config set-context deployer --user deployer --cluster self
+              kubectl config use-context deployer
+
+              echo "applying chart to ${RELEASE_NAMESPACE} namespace..."
+              kapp deploy \
+                -y \
+                --namespace "${RELEASE_NAMESPACE}" \
+                --allow-ns "${RELEASE_NAMESPACE}" \
+                --allow-cluster \
+                --app "${APP_NAME}" \
+                --diff-changes \
+                -f ./manifests/
