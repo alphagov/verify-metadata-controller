@@ -81,9 +81,9 @@ subprojects {
     dependencies {
 
         if (project.hasProperty('cloudhsm')) {
-            implementation name: 'cloudhsm-3.0.0'
+            implementation name: 'cloudhsm-3.2.1'
         } else {
-            implementation files('../dev/cloudhsm-3.0.0.jar')
+            implementation files('../dev/cloudhsm-3.2.1.jar')
         }
     }
 }
