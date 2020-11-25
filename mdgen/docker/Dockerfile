@@ -1,6 +1,7 @@
 FROM ubuntu:18.04
 
 ENV CLASSPATH=/opt/cloudhsm/java/*
+ENV CLOUDHSM_CLIENT_VERSION=3.2.1-1
 
 RUN apt-get update
 RUN apt-get install wget \
@@ -17,9 +18,9 @@ RUN apt-get install wget \
                     bison \
                     -y
 
-RUN wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/Xenial/cloudhsm-client_latest_amd64.deb && \
-    wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/Xenial/cloudhsm-client-jce_latest_amd64.deb && \
-    wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/Xenial/cloudhsm-client-dyn_latest_amd64.deb && \
+RUN wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/Xenial/cloudhsm-client_${CLOUDHSM_CLIENT_VERSION}_amd64.deb && \
+    wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/Xenial/cloudhsm-client-jce_${CLOUDHSM_CLIENT_VERSION}_amd64.deb && \
+    wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/Xenial/cloudhsm-client-dyn_${CLOUDHSM_CLIENT_VERSION}_amd64.deb && \
     wget http://de.archive.ubuntu.com/ubuntu/pool/main/j/json-c/libjson-c2_0.11-4ubuntu2_amd64.deb && \
     wget http://de.archive.ubuntu.com/ubuntu/pool/main/libe/libedit/libedit2_3.1-20150325-1ubuntu2_amd64.deb
 RUN dpkg -i *.deb
