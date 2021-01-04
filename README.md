@@ -16,7 +16,7 @@ Kubernetes Custom Resource and Controller for generating and signing SAML metada
 
 ## Development
 
-Use `gds-cli` to update `kubeconfig` to refer to the target cluster:    
+Use `gds-cli` to update `kubeconfig` to refer to the target cluster:
 
 `gds-cli <cluster e.g. (verify|sandbox)> update-kubeconfig`
 
@@ -28,10 +28,10 @@ Export this config:
 To build and deploy to a development environment:
 
 ```
-eval $(minikube docker-env)     # point local docker commands at the engine in minikube 
+eval $(minikube docker-env)     # point local docker commands at the engine in minikube
 make                            # regenerate controller/api after changes
 make docker-build               # build the controller image
-make deploy                     # install controller with kubectl 
+make deploy                     # install controller with kubectl
 ```
 
 ```
@@ -44,9 +44,23 @@ Once you have dep installed you should be able to run `dep ensure` from the root
 Followed by `go get -u github.com/maxbrunsfeld/counterfeiter` this should be enough to get the project running.
 Simply now run `make` and see if it explodes.
 
-## Test
+## Controller Unit Tests
 
-Run `./hack/test.sh`
+The controller unit tests (Go) require a kubernetes control plane to function, the kubebuilder tools provide this.
+
+The easist way to run the tests is to use Docker:
+
+```
+docker build -f Docker.test .
+```
+
+## Deployment Test
+
+To build and deploy to a local Docker-in-Docker cluster (DinD) Run
+
+```
+./hack/test.sh
+```
 
 ## Connecting to Sandbox CloudHSM for local development
 
